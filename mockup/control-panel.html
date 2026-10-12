@@ -1,0 +1,988 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pocket Cloud</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.min.css">
+<script src="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.iife.min.js"></script>
+<style>
+:root {
+  --bg: #111217;
+  --panel: #181b1f;
+  --panel2: #22252b;
+  --line: #2a2e35;
+  --line2: #3a3e46;
+  --text: #d8d9da;
+  --muted: #8e9099;
+  --faint: #6e7079;
+  --blue: #5794f2;
+  --green: #73bf69;
+  --yellow: #f2cc0c;
+  --orange: #ff9830;
+  --red: #f2495c;
+  --purple: #b877d9;
+  --mono: ui-monospace, Consolas, "Cascadia Mono", Menlo, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body { font: 13px/1.45 Inter, Roboto, "Segoe UI", system-ui, sans-serif; }
+a { color: var(--blue); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, .mono { font-family: var(--mono); font-size: 12px; }
+
+/* Top bar */
+.top { height: 48px; display: flex; align-items: center; gap: 18px; padding: 0 16px;
+  background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+.brand { font-weight: 600; font-size: 14px; }
+.top .host { color: var(--muted); }
+.top .spacer { flex: 1; }
+.top .note { color: var(--faint); }
+
+/* Layout */
+.layout { display: flex; min-height: calc(100vh - 48px); }
+nav.side { width: 196px; flex: none; background: var(--panel); border-right: 1px solid var(--line); padding: 10px 0; }
+nav.side a { display: block; padding: 7px 16px; color: var(--muted); border-left: 2px solid transparent; }
+nav.side a:hover { color: var(--text); text-decoration: none; background: var(--panel2); }
+nav.side a.on { color: var(--text); background: var(--panel2); border-left-color: var(--blue); }
+nav.side .count { float: right; color: var(--faint); }
+nav.side .count.warn { color: var(--yellow); }
+main { flex: 1; min-width: 0; padding: 20px 24px 40px; }
+section[hidden] { display: none; }
+
+h1 { font-size: 18px; font-weight: 500; margin: 0 0 2px; }
+.sub { color: var(--muted); margin: 0 0 16px; }
+h2 { font-size: 14px; font-weight: 500; margin: 24px 0 8px; }
+
+.grid { display: grid; gap: 12px; }
+.g2 { grid-template-columns: 1fr 1fr; }
+.g4 { grid-template-columns: repeat(4, 1fr); }
+.span2 { grid-column: span 2; }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 3px; min-width: 0; }
+.panel > h3 { font-size: 13px; font-weight: 500; margin: 0; padding: 9px 14px; border-bottom: 1px solid var(--line);
+  display: flex; align-items: baseline; gap: 10px; }
+.panel > h3 .r { margin-left: auto; font-weight: 400; color: var(--muted); }
+.panel .body { padding: 12px 14px; }
+.chart { padding: 8px 6px 4px; min-height: 230px; }
+
+.stat { padding: 12px 14px; }
+.stat .l { color: var(--muted); }
+.stat .v { font-size: 24px; font-weight: 400; margin: 2px 0 1px; font-variant-numeric: tabular-nums; }
+.stat .s { color: var(--muted); }
+
+.tw { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-weight: 500; color: var(--muted); padding: 8px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 8px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tbody tr.click { cursor: pointer; }
+tbody tr.click:hover td { background: var(--panel2); }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.faint { color: var(--faint); }
+.ok { color: var(--green); }
+.warn { color: var(--yellow); }
+.bad { color: var(--red); }
+.wrap { white-space: normal; }
+
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; vertical-align: 0; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+
+.bar { height: 4px; background: var(--panel2); border-radius: 2px; overflow: hidden; min-width: 90px; }
+.bar i { display: block; height: 100%; }
+.alloc { display: flex; align-items: center; gap: 10px; }
+.alloc .bar { flex: 1; }
+.alloc span { width: 38px; text-align: right; font-variant-numeric: tabular-nums; }
+
+.seg { display: flex; height: 10px; border-radius: 2px; overflow: hidden; background: var(--panel2); margin: 6px 0 12px; }
+.seg i { display: block; height: 100%; }
+.segw { position: relative; margin: 10px 0 12px; }
+.segw .seg { margin: 0; }
+.segw .lim { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--text); border-radius: 1px; }
+.legend-row { display: flex; justify-content: space-between; padding: 4px 0; border-top: 1px solid var(--line); }
+.legend-row:first-of-type { border-top: none; }
+
+.btn { background: var(--panel2); border: 1px solid var(--line2); color: var(--text); padding: 5px 12px; border-radius: 3px;
+  font: inherit; cursor: pointer; }
+.btn:hover { border-color: var(--faint); }
+.btn.primary { background: #3d71d9; border-color: #3d71d9; color: #fff; }
+.btn.danger { color: var(--red); }
+.btn.sm { padding: 2px 9px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+td.actions { display: table-cell; white-space: nowrap; text-align: right; }
+td.actions .btn + .btn { margin-left: 6px; }
+
+input[type=text], input[type=number], input[type=time], input[type=password], select {
+  background: var(--bg); border: 1px solid var(--line2); color: var(--text); padding: 5px 8px; border-radius: 3px; font: inherit; }
+input[type=number] { width: 84px; }
+input[type=checkbox] { accent-color: var(--blue); width: 15px; height: 15px; vertical-align: -3px; }
+input:focus, select:focus { outline: 1px solid var(--blue); outline-offset: -1px; }
+
+.form .row { display: grid; grid-template-columns: minmax(220px, 340px) 1fr; gap: 16px; padding: 10px 14px; border-bottom: 1px solid var(--line); align-items: center; }
+.form .row:last-child { border-bottom: none; }
+.form [data-ag] .row:last-child { border-bottom: 1px solid var(--line); }
+.form .row .h { color: var(--muted); font-size: 12px; margin-top: 1px; }
+.form .row .c { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.tabs { display: flex; gap: 22px; border-bottom: 1px solid var(--line); margin-bottom: 12px; }
+.tabs a { color: var(--muted); padding: 8px 0; border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; }
+.tabs a:hover { color: var(--text); text-decoration: none; }
+.tabs a.on { color: var(--text); border-bottom-color: var(--blue); }
+
+.filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.filters input[type=text] { width: 220px; }
+
+pre.block { margin: 0; padding: 10px 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 3px;
+  font-family: var(--mono); font-size: 12px; line-height: 1.55; overflow-x: auto; color: var(--text); }
+pre.log { max-height: 560px; }
+
+.crumbs { display: flex; gap: 6px; align-items: center; margin-bottom: 10px; color: var(--muted); flex-wrap: wrap; }
+.crumbs a { cursor: pointer; }
+.back { display: inline-block; margin-bottom: 10px; cursor: pointer; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; }
+.kv .k { color: var(--muted); }
+.alert-line { display: flex; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line); align-items: baseline; }
+.alert-line:last-child { border-bottom: none; }
+.alert-line .when { color: var(--muted); white-space: nowrap; margin-left: auto; }
+
+/* Sliders: thin track, blue fill, round handle, number box beside */
+.sl { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 460px; }
+.sl.compact { max-width: 300px; }
+.sl-track { flex: 1; position: relative; min-width: 120px; }
+.sl.has-marks .sl-track { padding: 18px 0 18px; }
+.sl.has-marks .sl-marks { top: 36px; }
+.sl-marks .mk.up { top: -36px; padding-top: 0; padding-bottom: 7px; }
+.sl-marks .mk.up i { top: auto; bottom: 0; }
+.sl-range { -webkit-appearance: none; appearance: none; width: 100%; height: 18px; margin: 0; background: transparent; cursor: pointer; display: block; }
+.sl-range:focus { outline: none; }
+.sl-range::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, #5794f2 var(--p), #3a3e46 var(--p)); }
+.sl-range::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #d8d9da; border: 2px solid #5794f2; margin-top: -5px; }
+.sl-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px rgba(87,148,242,0.35); }
+.sl-range::-moz-range-track { height: 4px; border-radius: 2px; background: #3a3e46; }
+.sl-range::-moz-range-progress { height: 4px; border-radius: 2px; background: #5794f2; }
+.sl-range::-moz-range-thumb { width: 10px; height: 10px; border-radius: 50%; background: #d8d9da; border: 2px solid #5794f2; }
+.sl input.sl-num { width: 76px; }
+.sl .unit { color: var(--muted); min-width: 52px; }
+.sl-marks { position: absolute; left: 0; right: 0; top: 18px; height: 16px; }
+.sl-marks .mk { position: absolute; top: 0; transform: translateX(var(--tx, -50%)); font-size: 11px; color: var(--muted); white-space: nowrap; padding-top: 7px; }
+.sl-marks .mk i { position: absolute; top: 0; left: var(--tick, 50%); width: 2px; height: 6px; margin-left: -1px; border-radius: 1px; }
+.sl-preview { color: var(--muted); }
+.thr { display: flex; align-items: center; gap: 10px; }
+.thr > span { width: 40px; }
+
+/* Popup */
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; z-index: 20; padding: 16px; }
+.modal[hidden] { display: none; }
+.modal-box { width: min(560px, 100%); }
+.modal-box .foot { display: flex; gap: 8px; justify-content: flex-end; padding: 10px 14px; border-top: 1px solid var(--line); }
+.alloc-click { cursor: pointer; padding: 6px 0; }
+.alloc-click:hover .bar { outline: 1px solid var(--faint); outline-offset: 3px; }
+
+/* uPlot on dark */
+.uplot, .u-legend { font-family: inherit; color: var(--muted); }
+.u-legend { font-size: 12px; }
+.u-legend .u-marker { border-radius: 2px; }
+.u-select { background: rgba(87,148,242,0.12); }
+
+@media (max-width: 1100px) {
+  .g4 { grid-template-columns: repeat(2, 1fr); }
+  .g2 { grid-template-columns: 1fr; }
+  .span2 { grid-column: auto; }
+}
+@media (max-width: 820px) {
+  .layout { display: block; }
+  nav.side { width: auto; display: flex; overflow-x: auto; padding: 0; border-right: none; border-bottom: 1px solid var(--line); }
+  nav.side a { white-space: nowrap; border-left: none; border-bottom: 2px solid transparent; padding: 10px 12px; }
+  nav.side a.on { border-bottom-color: var(--blue); }
+  nav.side .count { float: none; margin-left: 6px; }
+  main { padding: 16px; }
+  .g2 { grid-template-columns: 1fr; }
+  .span2 { grid-column: auto; }
+  .form .row { grid-template-columns: 1fr; gap: 6px; }
+  .top .host, .top .note { display: none; }
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <span class="brand">Pocket Cloud</span>
+  <span class="host">pocket · 100.92.14.7</span>
+  <span><span class="dot" style="background:var(--green)"></span>Healthy</span>
+  <span class="spacer"></span>
+  <span class="note">Mockup · sample data</span>
+  <span class="muted" id="updated"></span>
+</header>
+
+<div class="layout">
+  <nav class="side" id="nav"></nav>
+  <main>
+    <section id="p-overview" hidden></section>
+    <section id="p-storage" hidden></section>
+    <section id="p-apps" hidden></section>
+    <section id="p-devices" hidden></section>
+    <section id="p-files" hidden></section>
+    <section id="p-jobs" hidden></section>
+    <section id="p-alerts" hidden></section>
+    <section id="p-settings" hidden></section>
+    <section id="p-logs" hidden></section>
+  </main>
+</div>
+<div class="modal" id="modal" hidden onclick="if (event.target === this) closeModal()"><div class="panel modal-box" id="modal-box"></div></div>
+
+<script>
+/* ---------- helpers ---------- */
+const C = { green:'#73bf69', yellow:'#f2cc0c', blue:'#5794f2', orange:'#ff9830', red:'#f2495c', purple:'#b877d9',
+            muted:'#8e9099', line:'#2a2e35', grey:'#5c6370' };
+const KB = 1024, MB = 1024 ** 2, GB = 1024 ** 3;
+const NOW = new Date(2026, 9, 10, 22, 58, 5);
+function rng(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const R = rng(20261010);
+const n = x => Math.round(x).toLocaleString('en-US');
+function fb(b) { if (b < 1024) return Math.round(b) + ' B'; const u = ['KB','MB','GB','TB']; let i = -1;
+  do { b /= 1024; i++; } while (b >= 1024 && i < 3);
+  return (b >= 100 ? b.toFixed(0) : b >= 10 ? b.toFixed(1) : b.toFixed(2)) + ' ' + u[i]; }
+const fgb = g => fb(g * GB);
+const fmb = m => fb(m * MB);
+const pad = x => String(x).padStart(2, '0');
+const hms = d => `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+function pick(list, weights) { const s = weights.reduce((a, b) => a + b, 0); let r = R() * s;
+  for (let i = 0; i < list.length; i++) { r -= weights[i]; if (r <= 0) return list[i]; } return list[list.length - 1]; }
+function hash(str) { let h = 2166136261; for (const ch of str) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
+const barColor = (pct, warn) => pct >= 100 ? C.red : pct >= warn ? C.yellow : C.green;
+const allocCell = (pct, warn) => `<div class="alloc"><div class="bar"><i style="width:${Math.min(pct,100)}%;background:${barColor(pct,warn)}"></i></div><span class="${pct>=100?'bad':pct>=warn?'warn':''}">${pct.toFixed(0)}%</span></div>`;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ---------- sliders ---------- */
+// Every numeric setting: a range slider plus a number box; moving either updates the other.
+const gbv = x => (Math.round(x * 100) / 100) + ' GB';
+const markLeft = (v, min, max) => { const P = (v - min) / (max - min) * 100; return `calc(${P}% + ${7 - P * 0.14}px)`; };
+// labels near either end of the track hang inwards instead of off the edge
+const markEdge = P => P < 12 ? '--tx:0%;--tick:0%' : P > 88 ? '--tx:-100%;--tick:100%' : '--tx:-50%;--tick:50%';
+function slider({ min, max, step = 1, value, unit = '', none = false, marks = null, cls = '', compact = false }) {
+  const v = Math.min(max, Math.max(min, value));
+  const p = (v - min) / (max - min) * 100;
+  const mk = m => { const mv = Math.min(max, Math.max(min, m.v));
+    return `<span class="mk${m.k === 'warn' ? ' up' : ''}" data-k="${m.k || ''}" style="left:${markLeft(mv, min, max)};${markEdge((mv - min) / (max - min) * 100)}"><i style="background:${m.color}"></i>${m.label}</span>`; };
+  return `<div class="sl ${cls}${compact ? ' compact' : ''}${marks ? ' has-marks' : ''}">
+    <div class="sl-track"><input type="range" class="sl-range" min="${min}" max="${max}" step="${step}" value="${v}" style="--p:${p}%"${none ? ' data-none="1"' : ''}>
+      ${marks ? `<div class="sl-marks">${marks.map(mk).join('')}</div>` : ''}</div>
+    <input type="number" class="sl-num" min="${min}" max="${max}" step="${step}" value="${none && v === min ? '' : v}"${none ? ' placeholder="none"' : ''}><span class="unit">${unit}</span></div>`;
+}
+function paint(r) { r.style.setProperty('--p', ((+r.value - +r.min) / (+r.max - +r.min) * 100) + '%'); }
+// Allocation groups: the allocation slider, its warning slider and the per-device cap work together.
+function refreshGroup(g) {
+  if (!g) return;
+  const alloc = +g.querySelector('.sl-alloc .sl-range').value;
+  const warnEl = g.querySelector('.sl-warn .sl-range');
+  const warn = warnEl ? +warnEl.value : +g.dataset.warn;
+  const used = +g.dataset.used;
+  const pct = used / alloc * 100;
+  g.querySelector('.sl-preview').innerHTML =
+    `${fgb(used)} of ${gbv(alloc)} used <span class="${pct >= 100 ? 'bad' : pct >= warn ? 'warn' : ''}">(${pct.toFixed(0)}%)</span>, warning at ${gbv(alloc * warn / 100)}`;
+  const ar = g.querySelector('.sl-alloc .sl-range');
+  const wm = g.querySelector('.sl-alloc .mk[data-k="warn"]');
+  if (wm) {
+    const wv = alloc * warn / 100, P = (wv - +ar.min) / (+ar.max - +ar.min) * 100;
+    wm.style.display = wv < +ar.min ? 'none' : '';
+    wm.style.left = markLeft(Math.max(+ar.min, wv), +ar.min, +ar.max);
+    markEdge(P).split(';').forEach(d => { const [k, v] = d.split(':'); wm.style.setProperty(k, v); });
+  }
+  const cap = g.querySelector('.sl-cap');
+  if (cap) {
+    const cr = cap.querySelector('.sl-range'), cn = cap.querySelector('.sl-num');
+    cr.max = cn.max = alloc;
+    if (+cr.value > alloc) { cr.value = alloc; if (cn.value !== '') cn.value = alloc; }
+    paint(cr);
+  }
+}
+document.addEventListener('input', e => {
+  const t = e.target, box = t.closest('.sl');
+  if (!box) return;
+  const r = box.querySelector('.sl-range'), num = box.querySelector('.sl-num');
+  if (t === r) num.value = (r.dataset.none && +r.value === +r.min) ? '' : r.value;
+  else if (t === num && num.value !== '') r.value = Math.min(+r.max, Math.max(+r.min, +num.value));
+  else if (t === num) r.value = r.min;
+  paint(r);
+  refreshGroup(box.closest('[data-ag]'));
+  refreshPool(box.closest('[data-pool]'));
+});
+document.addEventListener('change', e => {  // snap a typed number into range when the box is left
+  const t = e.target, box = t.closest('.sl');
+  if (!box || !t.classList.contains('sl-num') || t.value === '') return;
+  const r = box.querySelector('.sl-range');
+  t.value = r.value;
+});
+
+/* storage pool group on the Settings page */
+function refreshPool(g) {
+  if (!g) return;
+  const ir = g.querySelector('.sl-pint .sl-range'), inum = g.querySelector('.sl-pint .sl-num');
+  const reserve = +g.querySelector('.sl-res .sl-range').value;
+  const max = intPoolMax(reserve);  // a bigger Android reserve shrinks how far the internal pool can go
+  ir.max = inum.max = max;
+  if (+ir.value > max) { ir.value = max; inum.value = max; }
+  paint(ir);
+  const mk = g.querySelector('.sl-pint .mk');
+  if (mk) mk.style.left = markLeft(Math.max(+ir.min, POOL.intUsed), +ir.min, max);
+  const internal = +ir.value, sd = +g.querySelector('.sl-psd .sl-range').value, total = internal + sd;
+  const out = g.querySelector('.pool-preview');
+  out.innerHTML = total < POOL.promised
+    ? `<span class="bad">Pool ${gbv(total)} is smaller than the ${gbv(POOL.promised)} already promised to apps. Lower app allocations first.</span>`
+    : `Pool: <b>${gbv(total)}</b> (${gbv(internal)} internal + ${gbv(sd)} SD card) · ${gbv(POOL.promised)} promised to apps · ${gbv(total - POOL.promised)} unpromised · ${fgb(POOL.used)} in use`;
+}
+
+/* allocation popup from the Apps list */
+function allocSlider(a) {
+  const min = Math.max(0.5, Math.ceil(a.used * 2) / 2);
+  return slider({ min, max: allocMax(a), step: 0.5, value: a.alloc, unit: 'GB', cls: 'sl-alloc',
+    marks: [{ v: a.used, label: 'in use ' + fgb(a.used), color: C.muted }, { k: 'warn', v: a.alloc * a.warn / 100, label: 'warning', color: C.yellow }] });
+}
+function openAlloc(id) {
+  const a = APPS.find(x => x.id === id);
+  $('modal-box').innerHTML = `<h3>Allocation · ${a.name}</h3>
+    <div class="body" data-ag data-used="${a.used}" data-warn="${a.warn}">
+      ${allocSlider(a)}
+      <p class="sl-preview" style="margin:10px 0 0"></p>
+      <p class="faint" style="margin:6px 0 0">Up to ${gbv(allocMax(a))}: this app's allocation plus the ${gbv(POOL.unpromised)} of the pool not yet promised to any app. It can't go below what the app already holds.</p>
+    </div>
+    <div class="foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="closeModal()">Save</button></div>`;
+  $('modal').hidden = false;
+  refreshGroup($('modal-box').querySelector('[data-ag]'));
+}
+function closeModal() { $('modal').hidden = true; }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+/* ---------- data (sample, internally consistent) ---------- */
+const DEVICES = {
+  desktop: { name:'Desktop PC',          ip:'100.101.12.4', os:'Windows 11',               seen:'just now' },
+  s24:     { name:'Galaxy S24 Ultra',    ip:'100.88.3.21',  os:'Android 16',               seen:'4 min ago' },
+  gha:     { name:'GitHub Actions',      ip:'100.70.211.9', os:'Linux runner · temporary', seen:'1 h ago' },
+  pocket:  { name:'pocket (this phone)', ip:'127.0.0.1',    os:'Android 10',               seen:'just now' },
+};
+// requests in the last 24 h, per app per device; app and device totals are both derived from this
+const REQ_BY = {
+  'egx-analyzer': { desktop:6980, s24:1094, gha:1140 },
+  'signal-lab':   { pocket:4690, desktop:270 },
+  'racedeck':     { desktop:3880 },
+  'deskglow':     { pocket:288 },
+  'spen-lab':     { s24:42 },
+  'matchgame':    { desktop:0 },
+};
+const APPS = [
+  { id:'egx-analyzer', name:'EGX Analyzer', notes:'Price history and analysis exports for the Android app', created:'Oct 3, 2026', by:'desktop',
+    alloc:3, warn:80, atLimit:'Refuse uploads', moveDays:7, shared:1.62, priv:{ desktop:0.71, s24:0.12, gha:0.06 }, internal:0.58,
+    files:4812, req:9214, inMB:412, outMB:1240, err:3, last:'2 min ago', color:C.green, shape:'day' },
+  { id:'signal-lab', name:'Signal Lab', notes:'Crypto candles and scanner state', created:'Sep 21, 2026', by:'pocket',
+    alloc:3, warn:80, atLimit:'Refuse uploads', moveDays:3, shared:0.95, priv:{ pocket:0.11, desktop:0.06 }, internal:0.41,
+    files:22410, req:4960, inMB:610, outMB:380, err:7, last:'just now', color:C.yellow, shape:'flat' },
+  { id:'racedeck', name:'RaceDeck', notes:'F1 session timing archives', created:'Sep 30, 2026', by:'desktop',
+    alloc:10, warn:80, atLimit:'Refuse uploads', moveDays:7, shared:6.10, priv:{ desktop:0.30 }, internal:0.31,
+    files:1204, req:3880, inMB:820, outMB:2460, err:0, last:'14 min ago', color:C.blue, shape:'evening' },
+  { id:'deskglow', name:'Deskglow', notes:'Screen layouts and settings', created:'Sep 24, 2026', by:'pocket',
+    alloc:3, warn:80, atLimit:'Refuse uploads', moveDays:7, shared:0, priv:{ pocket:0.08 }, internal:0.05,
+    files:61, req:288, inMB:1, outMB:14, err:1, last:'1 h ago', color:C.orange, shape:'flat' },
+  { id:'spen-lab', name:'S Pen Lab', notes:'Air Actions recordings', created:'Sep 27, 2026', by:'s24',
+    alloc:3, warn:80, atLimit:'Refuse uploads', moveDays:7, shared:0.04, priv:{ s24:0.17 }, internal:0.02,
+    files:318, req:42, inMB:3, outMB:9, err:0, last:'3 days ago', color:C.purple, shape:'day' },
+  { id:'matchgame', name:'MatchGame', notes:'', created:'Sep 22, 2026', by:'desktop',
+    alloc:3, warn:80, atLimit:'Refuse uploads', moveDays:7, shared:0.026, priv:{ desktop:0.004 }, internal:0.01,
+    files:12, req:0, inMB:0, outMB:0, err:0, last:'19 days ago', color:C.red, shape:'none' },
+];
+APPS.forEach(a => {
+  a.devs = Object.keys(a.priv);
+  a.used = a.shared + Object.values(a.priv).reduce((s, v) => s + v, 0);
+  a.sd = a.used - a.internal;
+  a.pct = a.used / a.alloc * 100;
+});
+const TOT = {
+  used: APPS.reduce((s, a) => s + a.used, 0), files: APPS.reduce((s, a) => s + a.files, 0),
+  req: APPS.reduce((s, a) => s + a.req, 0), err: APPS.reduce((s, a) => s + a.err, 0),
+  inMB: APPS.reduce((s, a) => s + a.inMB, 0), outMB: APPS.reduce((s, a) => s + a.outMB, 0),
+};
+const INTERNAL = { cap:110.4, other:58.9, pocket:APPS.reduce((s, a) => s + a.internal, 0), sys:0.34 };
+INTERNAL.free = INTERNAL.cap - INTERNAL.other - INTERNAL.pocket - INTERNAL.sys;
+const SD = { cap:238.3, pocket:APPS.reduce((s, a) => s + a.sd, 0), copy:0.42, undo:0.19 };
+SD.free = SD.cap - SD.pocket - SD.copy - SD.undo;
+// Storage pool: how much of each storage Pocket may use. App allocations are promised out of it (strict: never more than the pool).
+const POOL = { internal: 20, sd: 200, reserve: 10, earlyMove: 90 };
+POOL.intUsed = INTERNAL.pocket + INTERNAL.sys;
+POOL.sdUsed = SD.pocket + SD.copy + SD.undo;
+POOL.total = POOL.internal + POOL.sd;
+POOL.used = POOL.intUsed + POOL.sdUsed;
+POOL.promised = APPS.reduce((s, a) => s + a.alloc, 0);
+POOL.unpromised = POOL.total - POOL.promised;
+const intPoolMax = reserve => Math.floor(INTERNAL.free + POOL.intUsed - reserve);
+const sdPoolMax = () => Math.floor(SD.free + POOL.sdUsed);
+const allocMax = a => a.alloc + POOL.unpromised;
+APPS.forEach(a => {
+  a.reqBy = REQ_BY[a.id];
+  a.req = Object.values(a.reqBy).reduce((s, v) => s + v, 0);
+  a.devs.forEach(d => {
+    const dev = DEVICES[d], share = a.req ? a.reqBy[d] / a.req : 0;
+    (dev.apps ||= []).push(a.id);
+    dev.req = (dev.req || 0) + a.reqBy[d];
+    dev.inMB = (dev.inMB || 0) + a.inMB * share;
+    dev.outMB = (dev.outMB || 0) + a.outMB * share;
+  });
+});
+TOT.req = APPS.reduce((s, a) => s + a.req, 0);
+
+/* time series */
+const hourTs = Array.from({ length: 24 }, (_, i) => Math.floor(NOW / 3600000) * 3600 - (23 - i) * 3600);
+const shapes = {
+  day: h => (h >= 7 && h <= 23) ? 0.15 + 0.85 * Math.sin((h - 7) / 17 * Math.PI) : 0.07,
+  evening: h => (h >= 17 && h <= 23) ? 1 : h <= 1 ? 0.45 : (h >= 9 ? 0.25 : 0.04),
+  flat: () => 1, none: () => 0,
+};
+function hourly(total, shape) {
+  const w = hourTs.map(t => { const h = new Date(t * 1000).getHours(); return Math.max(0, shapes[shape](h)) * (0.8 + 0.4 * R()); });
+  const s = w.reduce((a, b) => a + b, 0) || 1;
+  return w.map(x => Math.round(x / s * total));
+}
+APPS.forEach(a => a.hourly = hourly(a.req, a.shape));
+
+const dayTs = Array.from({ length: 30 }, (_, i) => { const d = new Date(NOW); d.setHours(3, 30, 0, 0); return d / 1000 - (29 - i) * 86400; });
+const sdSeries = (() => { const start = SD.pocket - 2.02, inc = Array.from({ length: 29 }, () => 0.4 + R());
+  const s = inc.reduce((a, b) => a + b, 0); let v = start; const out = [start];
+  inc.forEach(x => { v += x / s * 2.02; out.push(+v.toFixed(3)); }); out[29] = SD.pocket; return out; })();
+const intSeries = dayTs.map((_, i) => i === 29 ? INTERNAL.pocket : +(1.05 + 0.3 * R()).toFixed(3));
+const growthPerDay = ((sdSeries[29] + intSeries[29]) - (sdSeries[0] + intSeries[0])) / 29;
+
+/* ---------- nav & routing ---------- */
+const PAGES = [
+  ['overview', 'Overview'], ['storage', 'Storage'], ['apps', 'Apps', APPS.length], ['devices', 'Devices', Object.keys(DEVICES).length],
+  ['files', 'Files'], ['jobs', 'Jobs'], ['alerts', 'Alerts', 1, 'warn'], ['settings', 'Settings'], ['logs', 'Logs'],
+];
+document.getElementById('nav').innerHTML = PAGES.map(([id, label, c, cls]) =>
+  `<a href="#${id}" data-p="${id}">${label}${c != null ? `<span class="count ${cls || ''}">${c}</span>` : ''}</a>`).join('');
+document.getElementById('updated').textContent = 'Updated ' + hms(NOW);
+
+const CHARTS = {};
+function chart(key, el, series, data, opts = {}) {
+  if (CHARTS[key]) { CHARTS[key].destroy(); }
+  const w = el.clientWidth || 600;
+  const axis = { stroke: C.muted, grid: { stroke: C.line, width: 1 }, ticks: { stroke: C.line, width: 1 }, font: '11px Inter, Roboto, sans-serif' };
+  CHARTS[key] = new uPlot({
+    width: w - 12, height: opts.height || 220,
+    cursor: { points: { size: 6 } },
+    scales: { x: { time: true } },
+    series: [{ label: 'Time', value: (u, v) => v == null ? '' : new Date(v * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) },
+      ...series.map(s => ({ label: s.label, stroke: s.color, width: 1.5, fill: s.fill || undefined,
+      value: (u, v) => v == null ? '' : (opts.fmt ? opts.fmt(v) : n(v)), points: { show: false } }))],
+    axes: [
+      opts.daily ? { ...axis, splits: () => data[0], values: (u, vals) => vals.map(v => new Date(v * 1000).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })) } : axis,
+      { ...axis, size: 56, values: (u, vals) => vals.map(v => opts.axisFmt ? opts.axisFmt(v) : opts.fmt ? opts.fmt(v) : n(v)) }],
+  }, data, el);
+  el._key = key;
+}
+window.addEventListener('resize', () => {
+  Object.entries(CHARTS).forEach(([k, c]) => { const el = c.root.parentElement; if (el && el.clientWidth) c.setSize({ width: el.clientWidth - 12, height: c.height }); });
+});
+
+// Pages switch in script. The address is updated only where the browser allows it: a page opened as an
+// embedded copy (data: URL, as the Claude app's file preview does) refuses any address change.
+function setAddress(h, replace) {
+  try { history[replace ? 'replaceState' : 'pushState'](null, '', '#' + h); } catch (e) { /* not allowed here */ }
+}
+function go(h) { setAddress(h); route(h); }
+document.addEventListener('click', e => {
+  const a = e.target.closest('a[href^="#"]');
+  if (!a || e.defaultPrevented) return;
+  e.preventDefault();
+  const h = a.getAttribute('href').slice(1);
+  if (h) go(h);
+});
+window.addEventListener('popstate', () => route());
+
+function route(target) {
+  const h = target ?? (location.hash.slice(1) || 'overview');
+  const [p, ...rest] = h.split('/');
+  const arg = rest.join('/');
+  const page = PAGES.some(x => x[0] === p) ? p : 'overview';
+  document.querySelectorAll('nav.side a').forEach(a => a.classList.toggle('on', a.dataset.p === page));
+  document.querySelectorAll('main > section').forEach(s => s.hidden = s.id !== 'p-' + page);
+  RENDER[page](arg ? decodeURIComponent(arg) : '');
+  window.scrollTo(0, 0);
+}
+
+/* ---------- pages ---------- */
+const RENDER = {};
+const $ = id => document.getElementById(id);
+
+RENDER.overview = () => {
+  const s = $('p-overview');
+  const services = [
+    ['Gateway', 'Running', 'http://pocket:9000 · 6 d 20 h'],
+    ['Storage server (rclone)', 'Running', 'behind the gateway · 6 d 20 h'],
+    ['Control panel', 'Running', 'http://pocket:8000'],
+    ['Tailscale', 'Connected', 'pocket · 100.92.14.7 · direct to Desktop PC'],
+    ['Scheduler', 'Running', 'next: Nightly copy at 03:00'],
+    ['Health checks', 'Passing', 'last 22:55 · 11 of 11 passed'],
+  ];
+  s.innerHTML = `
+    <h1>Overview</h1><p class="sub">Everything on pocket at a glance.</p>
+    <div class="grid g4">
+      ${stat('Pocket data', fgb(TOT.used), `${n(TOT.files)} files in ${APPS.length} apps`)}
+      ${stat('Storage pool', `${(POOL.used / POOL.total * 100).toFixed(0)}% used`, `${fgb(POOL.used)} of ${gbv(POOL.total)} (${gbv(POOL.internal)} internal + ${gbv(POOL.sd)} SD)`)}
+      ${stat('Promised to apps', gbv(POOL.promised), `${gbv(POOL.unpromised)} of the pool unpromised`)}
+      ${stat('Requests, last 24 h', n(TOT.req), `${TOT.err} errors (${(TOT.err / TOT.req * 100).toFixed(2)}%)`)}
+      ${stat('Traffic, last 24 h', fmb(TOT.inMB + TOT.outMB), `${fmb(TOT.inMB)} in · ${fmb(TOT.outMB)} out`)}
+      ${stat('Apps · devices', `${APPS.length} · ${Object.keys(DEVICES).length}`, '1 app above its warning level')}
+      ${stat('Battery', '100%', 'plugged in · 33.8 °C')}
+      ${stat('Uptime', '6 d 20 h', 'since Oct 4, 02:20')}
+    </div>
+    <div class="grid g2" style="margin-top:12px">
+      <div class="panel span2"><h3>Requests per hour, by app <span class="r">last 24 h</span></h3><div class="chart" id="ch-req"></div></div>
+      <div class="panel"><h3>Services</h3><div class="tw"><table><tbody>
+        ${services.map(([a, b, c]) => `<tr><td><span class="dot" style="background:${C.green}"></span>${a}</td><td class="ok">${b}</td><td class="muted wrap">${c}</td></tr>`).join('')}
+      </tbody></table></div></div>
+      <div class="panel"><h3>Allocation use <span class="r"><a href="#apps">All apps</a></span></h3><div class="tw"><table><tbody>
+        ${APPS.slice().sort((x, y) => y.pct - x.pct).map(a => `<tr class="click" onclick="go('apps/${a.id}')"><td>${a.name}</td><td class="num muted">${fgb(a.used)} of ${a.alloc} GB</td><td style="width:40%">${allocCell(a.pct, a.warn)}</td></tr>`).join('')}
+      </tbody></table></div></div>
+      <div class="panel span2"><h3>Active alerts <span class="r"><a href="#alerts">All alerts</a></span></h3>
+        ${ACTIVE.map(alertLine).join('')}
+      </div>
+    </div>`;
+  chart('req', $('ch-req'), APPS.filter(a => a.req > 0).map(a => ({ label: a.name, color: a.color })),
+    [hourTs, ...APPS.filter(a => a.req > 0).map(a => a.hourly)]);
+};
+function stat(l, v, s) { return `<div class="panel stat"><div class="l">${l}</div><div class="v">${v}</div><div class="s">${s}</div></div>`; }
+
+RENDER.storage = () => {
+  const s = $('p-storage');
+  const pct = (x, cap) => (x / cap * 100).toFixed(2);
+  const sdFullDays = SD.free / growthPerDay;
+  s.innerHTML = `
+    <h1>Storage</h1><p class="sub">New files land on internal storage. Files unchanged for an app's move age go to the SD card each night at 03:10.</p>
+    <div class="grid g2">
+      <div class="panel span2"><h3>Storage pool <span class="r"><a href="#settings">Pool settings</a></span></h3><div class="tw"><table>
+        <thead><tr><th>Storage</th><th class="num">Pool limit</th><th class="num">Used by Pocket</th><th style="width:30%">Pool use</th><th class="num">Room left in pool</th></tr></thead>
+        <tbody>
+          <tr><td>Internal storage</td><td class="num">${gbv(POOL.internal)}</td><td class="num">${fgb(POOL.intUsed)}</td><td>${allocCell(POOL.intUsed / POOL.internal * 100, 80)}</td><td class="num">${fgb(POOL.internal - POOL.intUsed)}</td></tr>
+          <tr><td>SD card</td><td class="num">${gbv(POOL.sd)}</td><td class="num">${fgb(POOL.sdUsed)}</td><td>${allocCell(POOL.sdUsed / POOL.sd * 100, 80)}</td><td class="num">${fgb(POOL.sd - POOL.sdUsed)}</td></tr>
+          <tr><td><b>Total</b></td><td class="num"><b>${gbv(POOL.total)}</b></td><td class="num"><b>${fgb(POOL.used)}</b></td><td>${allocCell(POOL.used / POOL.total * 100, 80)}</td><td class="num"><b>${fgb(POOL.total - POOL.used)}</b></td></tr>
+        </tbody></table></div>
+        <div class="body muted" style="border-top:1px solid var(--line)">${gbv(POOL.promised)} of the pool is promised to apps and ${gbv(POOL.unpromised)} is unpromised. ${gbv(POOL.reserve)} of internal storage is always left free for Android.</div>
+      </div>
+      <div class="panel"><h3>Internal storage <span class="r">${fgb(INTERNAL.cap)}</span></h3><div class="body">
+        <div class="segw"><div class="seg"><i style="width:${pct(INTERNAL.other, INTERNAL.cap)}%;background:${C.grey}"></i><i style="width:${pct(INTERNAL.pocket, INTERNAL.cap)}%;background:${C.blue}"></i><i style="width:${pct(INTERNAL.sys, INTERNAL.cap)}%;background:${C.purple}"></i></div><b class="lim" style="left:${pct(INTERNAL.other + POOL.internal, INTERNAL.cap)}%"></b></div>
+        ${legend(C.grey, 'Android and other apps', fgb(INTERNAL.other))}
+        ${legend(C.blue, 'Pocket data (recent files)', fgb(INTERNAL.pocket))}
+        ${legend(C.purple, 'Pocket logs and statistics', fgb(INTERNAL.sys))}
+        ${legend('#2f333b', 'Free', fgb(INTERNAL.free))}
+        ${legend('#d8d9da', 'Pocket pool limit (white line)', gbv(POOL.internal))}
+        <p class="muted" style="margin:10px 0 0">Early move starts when the internal pool is ${POOL.earlyMove}% full.</p>
+      </div></div>
+      <div class="panel"><h3>SD card <span class="r">${fgb(SD.cap)} · exFAT</span></h3><div class="body">
+        <div class="segw"><div class="seg"><i style="width:${pct(SD.pocket, SD.cap)}%;background:${C.green}"></i><i style="width:${pct(SD.copy, SD.cap)}%;background:${C.yellow}"></i><i style="width:${pct(SD.undo, SD.cap)}%;background:${C.orange}"></i></div><b class="lim" style="left:${pct(POOL.sd, SD.cap)}%"></b></div>
+        ${legend(C.green, 'Pocket data (moved files)', fgb(SD.pocket))}
+        ${legend(C.yellow, 'Nightly copy of recent files', fgb(SD.copy))}
+        ${legend(C.orange, '14-day undo', fgb(SD.undo))}
+        ${legend('#2f333b', 'Free', fgb(SD.free))}
+        ${legend('#d8d9da', 'Pocket pool limit (white line)', gbv(POOL.sd))}
+        <p class="muted" style="margin:10px 0 0">At the last 30 days' growth (${fmb(growthPerDay * 1024)} a day), Pocket's SD card pool fills in about ${((POOL.sd - POOL.sdUsed) / growthPerDay / 365).toFixed(0)} years.</p>
+      </div></div>
+      <div class="panel span2"><h3>Pocket data over time <span class="r">last 30 days, after each nightly move</span></h3><div class="chart" id="ch-growth"></div></div>
+      <div class="panel span2"><h3>Where each app's data is</h3><div class="tw"><table>
+        <thead><tr><th>App</th><th class="num">Internal</th><th class="num">SD card</th><th class="num">Total</th><th class="num">Files</th><th class="num">Move after</th><th style="width:22%">On internal</th></tr></thead>
+        <tbody>${APPS.map(a => `<tr class="click" onclick="go('apps/${a.id}')"><td>${a.name}</td><td class="num">${fgb(a.internal)}</td><td class="num">${fgb(a.sd)}</td><td class="num">${fgb(a.used)}</td><td class="num">${n(a.files)}</td><td class="num">${a.moveDays} days</td>
+          <td><div class="bar"><i style="width:${(a.internal / a.used * 100).toFixed(1)}%;background:${C.blue}"></i></div></td></tr>`).join('')}</tbody>
+      </table></div></div>
+    </div>`;
+  chart('growth', $('ch-growth'), [
+    { label: 'SD card', color: C.green, fill: 'rgba(115,191,105,0.08)' },
+    { label: 'Internal', color: C.blue, fill: 'rgba(87,148,242,0.08)' },
+  ], [dayTs, sdSeries, intSeries], { fmt: v => v.toFixed(2) + ' GB', axisFmt: v => v + ' GB' });
+};
+function legend(color, label, value) { return `<div class="legend-row"><span><span class="sw" style="background:${color}"></span>${label}</span><span class="num">${value}</span></div>`; }
+
+RENDER.apps = (id) => {
+  const s = $('p-apps');
+  if (id) return renderApp(s, id);
+  s.innerHTML = `
+    <h1>Apps</h1><p class="sub">Apps appear here the first time they connect from any device. New apps get 3 GB, a warning at 80% and refused uploads at 100%. Click an allocation bar to change it.</p>
+    <div class="panel" style="margin-bottom:12px"><div class="body" style="display:flex;gap:28px;flex-wrap:wrap;align-items:center">
+      <span><b>${gbv(POOL.promised)}</b> <span class="muted">promised to apps out of the</span> <b>${gbv(POOL.total)}</b> <span class="muted">pool</span></span>
+      <span><b>${gbv(POOL.unpromised)}</b> <span class="muted">unpromised</span></span>
+      <span style="flex:1;min-width:160px"><div class="bar"><i style="width:${(POOL.promised / POOL.total * 100).toFixed(1)}%;background:${C.blue}"></i></div></span>
+      <a href="#settings">Pool settings</a>
+    </div></div>
+    <div class="panel"><div class="tw"><table>
+      <thead><tr><th>App</th><th>Devices</th><th class="num">Used</th><th style="width:18%">Allocation</th><th class="num">Requests 24 h</th><th class="num">In / out 24 h</th><th class="num">Errors</th><th>Last used</th></tr></thead>
+      <tbody>${APPS.map(a => `<tr class="click" onclick="go('apps/${a.id}')">
+        <td>${a.name}<div class="faint mono">${a.id}</div></td>
+        <td class="wrap">${a.devs.map(d => DEVICES[d].name).join(', ')}</td>
+        <td class="num">${fgb(a.used)}<div class="faint">of ${a.alloc} GB</div></td>
+        <td><div class="alloc-click" title="Change allocation" onclick="event.stopPropagation();openAlloc('${a.id}')">${allocCell(a.pct, a.warn)}</div></td>
+        <td class="num">${n(a.req)}</td><td class="num">${fmb(a.inMB)} / ${fmb(a.outMB)}</td>
+        <td class="num ${a.err ? 'warn' : 'muted'}">${a.err}</td><td class="muted">${a.last}</td></tr>`).join('')}</tbody>
+    </table></div></div>`;
+};
+
+function renderApp(s, id) {
+  const a = APPS.find(x => x.id === id);
+  if (!a) { s.innerHTML = `<a class="back" href="#apps">← Apps</a><p>No app called ${esc(id)}.</p>`; return; }
+  const split = a.devs.map(d => a.reqBy[d]);
+  const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(NOW); d.setHours(12, 0, 0, 0); return d / 1000 - (6 - i) * 86400; });
+  const daily = days.map(() => Math.round(a.req * (0.75 + 0.5 * R())));
+  const ops = [['Reads (GET, HEAD)', 0.66, C.green], ['Writes (PUT)', 0.2, C.blue], ['Listings', 0.11, C.yellow], ['Deletes', 0.03, C.red]];
+  const keyId = d => 'PK' + (hash(a.id + d).toString(36).toUpperCase() + 'XXXX').slice(0, 4) + '…' + (hash(d + a.id).toString(36).toUpperCase()).slice(-3);
+  s.innerHTML = `
+    <a class="back" href="#apps">← Apps</a>
+    <h1>${a.name}</h1>
+    <p class="sub"><span class="mono">${a.id}</span> · created ${a.created} when it first connected from ${DEVICES[a.by].name}${a.notes ? ' · ' + esc(a.notes) : ''}</p>
+    ${a.pct >= a.warn ? `<div class="panel" style="border-color:#6b5a12;margin-bottom:12px"><div class="body"><span class="warn">At ${a.pct.toFixed(0)}% of its ${a.alloc} GB allocation.</span> Uploads will be refused at ${a.alloc} GB. <a href="#" onclick="event.preventDefault();openAlloc('${a.id}')">Raise the allocation</a></div></div>` : ''}
+    <div class="grid g4">
+      ${stat('Used', fgb(a.used), `of ${a.alloc} GB · ${n(a.files)} files`)}
+      ${stat('Shared space', fgb(a.shared), `used by all ${a.devs.length} device${a.devs.length > 1 ? 's' : ''}`)}
+      ${stat('Requests, last 24 h', n(a.req), `${a.err} errors`)}
+      ${stat('Traffic, last 24 h', fmb(a.inMB + a.outMB), `${fmb(a.inMB)} in · ${fmb(a.outMB)} out`)}
+    </div>
+    <div class="grid g2" style="margin-top:12px">
+      <div class="panel span2"><h3>Devices <span class="r">each has its own key and private <span class="mono">device</span> space</span></h3><div class="tw"><table>
+        <thead><tr><th>Device</th><th>Address</th><th>Key</th><th class="num">Private space</th><th class="num">Requests 24 h</th><th>Last seen</th><th></th></tr></thead>
+        <tbody>${a.devs.map((d, i) => `<tr><td>${DEVICES[d].name}</td><td class="mono muted">${DEVICES[d].ip}</td><td class="mono">${keyId(d)}</td>
+          <td class="num">${fgb(a.priv[d])}</td><td class="num">${n(split[i])}</td><td class="muted">${DEVICES[d].seen}</td>
+          <td class="actions"><button class="btn sm">New key</button><button class="btn sm danger">Remove</button></td></tr>`).join('')}</tbody>
+      </table></div></div>
+      <div class="panel span2"><h3>Requests per day, by kind <span class="r">last 7 days</span></h3><div class="chart" id="ch-app"></div></div>
+      <div class="panel span2"><h3>Settings for this app</h3><div class="form">
+        ${frow('Display name', '', `<input type="text" value="${esc(a.name)}" style="width:220px">`)}
+        ${frow('Notes', '', `<input type="text" value="${esc(a.notes)}" style="width:100%">`)}
+        <div data-ag data-used="${a.used}">
+        ${frow('Allocation', `Shared and private spaces together · up to ${gbv(allocMax(a))} (this allocation + the pool's unpromised space)`, allocSlider(a))}
+        <div class="row"><span></span><div class="c"><div class="sl-preview"></div></div></div>
+        ${frow('Warn at', '', slider({ min: 50, max: 95, step: 5, value: a.warn, unit: '%', cls: 'sl-warn' }))}
+        ${frow('At 100%', '', `<select><option${a.atLimit === 'Refuse uploads' ? ' selected' : ''}>Refuse uploads</option><option>Warn only</option></select>`)}
+        ${frow('Cap per device', 'Limit on each private space · left end = none', slider({ min: 0, max: a.alloc, step: 0.5, value: 0, unit: 'GB', none: true, cls: 'sl-cap' }))}
+        </div>
+        ${frow('Move to SD card after', 'Days without changes', slider({ min: 1, max: 60, value: a.moveDays, unit: 'days' }))}
+        ${frow('Password-encrypt on SD card', 'Password kept by you, not on the phone', `<input type="checkbox">`)}
+        <div class="row"><span></span><div class="c"><button class="btn primary">Save</button><button class="btn">Cancel</button></div></div>
+      </div></div>
+      <div class="panel span2"><h3>Spaces</h3><div class="tw"><table>
+        <thead><tr><th>Bucket seen by the app</th><th>Where</th><th class="num">Size</th></tr></thead>
+        <tbody><tr><td class="mono">shared</td><td class="muted">all devices</td><td class="num">${fgb(a.shared)}</td></tr>
+        ${a.devs.map(d => `<tr><td class="mono">device</td><td class="muted">${DEVICES[d].name}</td><td class="num">${fgb(a.priv[d])}</td></tr>`).join('')}</tbody>
+      </table></div>
+      <h3 style="border-top:1px solid var(--line)">Actions</h3><div class="body actions">
+        <a class="btn" href="#files/${a.id}">Browse files</a><a class="btn" href="#logs/${a.id}">Request log</a>
+        <button class="btn">New keys for all devices</button><button class="btn danger">Empty app</button><button class="btn danger">Delete app</button>
+      </div></div>
+    </div>`;
+  refreshGroup(s.querySelector('[data-ag]'));
+  chart('app', $('ch-app'), ops.map(([l, , c]) => ({ label: l, color: c })), [days, ...ops.map(([, f]) => daily.map(v => Math.round(v * f)))], { daily: true });
+}
+function frow(label, hint, control) { return `<div class="row"><div>${label}${hint ? `<div class="h">${hint}</div>` : ''}</div><div class="c">${control}</div></div>`; }
+
+RENDER.devices = () => {
+  $('p-devices').innerHTML = `
+    <h1>Devices</h1><p class="sub">Every device that has connected, identified by its Tailscale address. A device's keys only work from that address.</p>
+    <div class="panel"><div class="tw"><table>
+      <thead><tr><th>Device</th><th>Address</th><th>System</th><th>Apps</th><th class="num">Requests 24 h</th><th class="num">In / out 24 h</th><th>Last seen</th><th></th></tr></thead>
+      <tbody>${Object.entries(DEVICES).map(([k, d]) => `<tr><td><span class="dot" style="background:${d.seen === '1 h ago' ? C.grey : C.green}"></span>${d.name}</td>
+        <td class="mono muted">${d.ip}</td><td class="muted">${d.os}</td>
+        <td class="wrap">${(d.apps || []).map(id => `<a href="#apps/${id}">${APPS.find(a => a.id === id).name}</a>`).join(', ')}</td>
+        <td class="num">${n(d.req)}</td><td class="num">${fmb(d.inMB)} / ${fmb(d.outMB)}</td><td class="muted">${d.seen}</td>
+        <td class="actions"><button class="btn sm">Rename</button><button class="btn sm">Block</button><button class="btn sm danger">Remove</button></td></tr>`).join('')}</tbody>
+    </table></div></div>`;
+};
+
+/* files */
+const TREE = {
+  'egx-analyzer/shared/': [['d', 'prices/', 4112, 1.21 * GB], ['d', 'analysis/', 612, 0.38 * GB], ['d', 'exports/', 31, 0.03 * GB], ['f', 'manifest.json', 4.1 * KB, 0]],
+  'egx-analyzer/shared/prices/': ['COMI.CA', 'ETEL.CA', 'HRHO.CA', 'TMGH.CA', 'EAST.CA', 'ABUK.CA', 'SWDY.CA', 'FWRY.CA'].map(t => ['d', t + '/', 514, 0.151 * GB]),
+};
+function listing(app, space, path) {
+  const key = `${app}/${space}/${path}`;
+  if (TREE[key]) return TREE[key];
+  const r = rng(hash(key));
+  if (/prices\/[A-Z]+\.CA\/$/.test(path)) return Array.from({ length: 12 }, (_, i) => {
+    const d = new Date(NOW); d.setDate(d.getDate() - i);
+    return ['f', `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.json`, (280 + r() * 60) * KB, i]; });
+  const folders = ['data/', 'cache/', 'state/'].slice(0, 1 + Math.floor(r() * 3)).map(f => ['d', f, Math.floor(5 + r() * 200), (1 + r() * 60) * MB]);
+  const files = ['settings.json', 'index.json', 'latest.bin', 'notes.txt'].map((f, i) => ['f', f, (2 + r() * 900) * KB, Math.floor(r() * 20)]);
+  return path.split('/').length > 3 ? files : [...folders, ...files];
+}
+let FILES = { app: 'egx-analyzer', space: 'shared', path: '', tab: 'browse' };
+RENDER.files = (arg) => {
+  if (arg && APPS.some(a => a.id === arg)) { FILES = { app: arg, space: 'shared', path: '', tab: 'browse' }; setAddress('files', true); }
+  const a = APPS.find(x => x.id === FILES.app);
+  const spaces = [['shared', 'shared · all devices'], ...a.devs.map(d => ['device:' + d, 'device · ' + DEVICES[d].name])];
+  const parts = FILES.path.split('/').filter(Boolean);
+  const dateFor = age => { const d = new Date(NOW); d.setDate(d.getDate() - age); d.setHours(3 + (age * 7) % 18, (age * 13) % 60); return d; };
+  const fmtD = d => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ', ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  const rows = listing(FILES.app, FILES.space, FILES.path);
+  // folder: ['d', name, fileCount, bytes]   file: ['f', name, bytes, ageDays]
+  const folderRow = ([, name, count, bytes]) => `<tr class="click" onclick="FILES.path+='${name}';RENDER.files()"><td>${esc(name)}</td><td class="num muted">${fb(bytes)}</td><td class="muted">${n(count)} files</td><td class="muted">Internal + SD card</td><td></td></tr>`;
+  const fileRow = ([, name, bytes, age]) => `<tr><td>${esc(name)}</td><td class="num">${fb(bytes)}</td><td class="muted">${fmtD(dateFor(age))}</td>
+    <td><span class="sw" style="background:${age >= a.moveDays ? C.green : C.blue}"></span>${age >= a.moveDays ? 'SD card' : 'Internal'}</td>
+    <td class="actions"><button class="btn sm">Download</button><button class="btn sm danger">Delete</button></td></tr>`;
+  $('p-files').innerHTML = `
+    <h1>Files</h1><p class="sub">Browse any app's spaces. Files show which storage they are on right now.</p>
+    <div class="tabs"><a class="${FILES.tab === 'browse' ? 'on' : ''}" onclick="FILES.tab='browse';RENDER.files()">Browse</a><a class="${FILES.tab === 'undo' ? 'on' : ''}" onclick="FILES.tab='undo';RENDER.files()">14-day undo <span class="faint">${UNDO.length}</span></a></div>
+    ${FILES.tab === 'undo' ? undoTable() : `
+    <div class="filters">
+      <select onchange="FILES.app=this.value;FILES.space='shared';FILES.path='';RENDER.files()">${APPS.map(x => `<option value="${x.id}"${x.id === FILES.app ? ' selected' : ''}>${x.name}</option>`).join('')}</select>
+      <select onchange="FILES.space=this.value;FILES.path='';RENDER.files()">${spaces.map(([v, l]) => `<option value="${v}"${v === FILES.space ? ' selected' : ''}>${l}</option>`).join('')}</select>
+      <span class="spacer" style="flex:1"></span><button class="btn">Upload</button><button class="btn">New folder</button>
+    </div>
+    <div class="crumbs"><a onclick="FILES.path='';RENDER.files()">${FILES.space.startsWith('device') ? 'device' : 'shared'}</a>
+      ${parts.map((p, i) => `<span>/</span><a onclick="FILES.path='${parts.slice(0, i + 1).join('/')}/';RENDER.files()">${esc(p)}</a>`).join('')}</div>
+    <div class="panel"><div class="tw"><table>
+      <thead><tr><th>Name</th><th class="num">Size</th><th>Modified</th><th>Stored on</th><th></th></tr></thead>
+      <tbody>${rows.map(r => r[0] === 'd' ? folderRow(r) : fileRow(r)).join('')}</tbody>
+    </table></div></div>`}`;
+};
+const UNDO = [
+  ['egx-analyzer', 'shared', 'exports/2026-09-28-weekly.csv', 3.4 * MB, 'Oct 9, 18:20', 'Desktop PC', 13],
+  ['egx-analyzer', 'device', 'cache/tmp-8812.json', 41 * KB, 'Oct 9, 18:20', 'Desktop PC', 13],
+  ['signal-lab', 'shared', 'candles/ETHUSDT/1m/2026-09-12.parquet', 11.2 * MB, 'Oct 8, 00:05', 'pocket (this phone)', 12],
+  ['racedeck', 'shared', 'sessions/2026/singapore/fp1/raw.bin', 142 * MB, 'Oct 6, 21:47', 'Desktop PC', 10],
+  ['deskglow', 'device', 'screens/old-layout.json', 6 * KB, 'Oct 2, 09:13', 'pocket (this phone)', 6],
+  ['spen-lab', 'device', 'recordings/test-03.json', 220 * KB, 'Sep 28, 16:40', 'Galaxy S24 Ultra', 2],
+];
+function undoTable() {
+  return `<div class="panel"><div class="tw"><table>
+    <thead><tr><th>App</th><th>Space</th><th>File</th><th class="num">Size</th><th>Deleted</th><th>By</th><th class="num">Kept for</th><th></th></tr></thead>
+    <tbody>${UNDO.map(([app, sp, f, sz, when, by, left]) => `<tr><td>${APPS.find(a => a.id === app).name}</td><td class="mono muted">${sp}</td><td class="mono">${f}</td>
+      <td class="num">${fb(sz)}</td><td class="muted">${when}</td><td class="muted">${by}</td><td class="num ${left <= 3 ? 'warn' : 'muted'}">${left} days</td>
+      <td><button class="btn sm">Restore</button></td></tr>`).join('')}</tbody>
+  </table></div></div>`;
+}
+
+/* jobs */
+const SCHEDULE = [
+  ['Nightly copy to SD card', 'Copies files saved today to the SD card', 'Daily 03:00', 'Today 03:00', 'ok', '318 files, 76 MB', '1 m 48 s', 'Tomorrow 03:00'],
+  ['Nightly move to SD card', 'Moves files unchanged for each app\'s move age off internal storage', 'Daily 03:10', 'Today 03:10', 'ok', '214 files, 88 MB freed', '6 m 02 s', 'Tomorrow 03:10'],
+  ['Undo cleanup', 'Removes deleted files kept longer than 14 days', 'Daily 03:30', 'Today 03:30', 'ok', '37 files, 21 MB', '4 s', 'Tomorrow 03:30'],
+  ['Integrity check', 'Reads every file on the SD card and compares checksums', 'Sundays 04:00', 'Sun Oct 4, 04:00', 'ok', '26,914 files, 0 problems', '41 m 10 s', 'Sun Oct 11, 04:00'],
+  ['Health check', 'Servers, Tailscale, battery, temperature, free space, error rate', 'Every 5 min', '22:55', 'ok', '11 of 11 passed', '1 s', '23:00'],
+];
+const JOBHIST = (() => {
+  const out = []; const r = rng(77);
+  for (let d = 10; d >= 4; d--) {
+    const date = `Oct ${d}`;
+    const cf = Math.floor(240 + r() * 160), cm = (50 + r() * 50).toFixed(0);
+    const mf = Math.floor(160 + r() * 110), mm = (60 + r() * 50).toFixed(0);
+    if (d === 10) {  // tonight's runs match the schedule table above
+      SCHEDULE.slice(0, 3).forEach(([j, , , , res, detail, took], i) => out.push([date + [', 03:00', ', 03:10', ', 03:30'][i], j, res, detail, took]));
+      continue;
+    }
+    out.push([date + ', 03:00', 'Nightly copy to SD card', 'ok', `${cf} files, ${cm} MB`, `1 m ${pad(Math.floor(r() * 59))} s`]);
+    out.push([date + ', 03:10', 'Nightly move to SD card', d === 7 ? 'warn' : 'ok',
+      d === 7 ? `${mf} files, ${mm} MB freed · 2 skipped (still being written)` : `${mf} files, ${mm} MB freed`, `${4 + Math.floor(r() * 4)} m ${pad(Math.floor(r() * 59))} s`]);
+    out.push([date + ', 03:30', 'Undo cleanup', 'ok', `${Math.floor(10 + r() * 50)} files, ${Math.floor(5 + r() * 30)} MB`, `${2 + Math.floor(r() * 5)} s`]);
+    if (d === 4) out.push(['Oct 4, 04:00', 'Integrity check', 'ok', '26,914 files, 0 problems', '41 m 10 s']);
+  }
+  return out;
+})();
+const resCls = r => r === 'ok' ? 'ok' : r === 'warn' ? 'warn' : 'bad';
+const resTxt = r => r === 'ok' ? 'OK' : r === 'warn' ? 'Warning' : 'Failed';
+RENDER.jobs = () => {
+  $('p-jobs').innerHTML = `
+    <h1>Jobs</h1><p class="sub">Scheduled work the phone does by itself. Times are set in Settings.</p>
+    <div class="panel"><div class="tw"><table>
+      <thead><tr><th>Job</th><th>Schedule</th><th>Last run</th><th>Result</th><th class="num">Took</th><th>Next run</th><th></th></tr></thead>
+      <tbody>${SCHEDULE.map(([j, what, sch, last, r, res, took, next]) => `<tr><td>${j}<div class="faint wrap">${what}</div></td><td class="muted">${sch}</td><td class="muted">${last}</td>
+        <td><span class="${resCls(r)}">${resTxt(r)}</span> <span class="muted">· ${res}</span></td><td class="num muted">${took}</td><td class="muted">${next}</td>
+        <td><button class="btn sm">Run now</button></td></tr>`).join('')}</tbody>
+    </table></div></div>
+    <h2>History</h2>
+    <div class="panel"><div class="tw"><table>
+      <thead><tr><th>Started</th><th>Job</th><th>Result</th><th class="num">Took</th></tr></thead>
+      <tbody>${JOBHIST.map(([t, j, r, res, took]) => `<tr><td class="muted">${t}</td><td>${j}</td><td><span class="${resCls(r)}">${resTxt(r)}</span> <span class="muted">· ${res}</span></td><td class="num muted">${took}</td></tr>`).join('')}</tbody>
+    </table></div></div>`;
+};
+
+/* alerts */
+const ACTIVE = [
+  { lvl: 'warn', text: 'EGX Analyzer is at 84% of its 3 GB allocation', detail: 'Uploads will be refused at 3 GB. Raise the allocation or clear old exports.', when: 'since Oct 9, 21:14' },
+];
+const ALERTHIST = [
+  ['warn', 'Oct 9, 21:14', 'EGX Analyzer passed 80% of its 3 GB allocation', 'active'],
+  ['info', 'Oct 8, 16:40', 'New device: Galaxy S24 Ultra joined EGX Analyzer', ''],
+  ['warn', 'Oct 7, 03:16', 'Nightly move: 2 files skipped (still being written)', 'cleared next night'],
+  ['warn', 'Oct 6, 15:02', 'Phone temperature reached 43.1 °C (limit 42 °C)', 'cleared 15:37'],
+  ['bad',  'Oct 4, 02:20', 'Storage was offline 02:11–02:20: the phone restarted and waited for unlock', 'cleared 02:20'],
+  ['info', 'Oct 3, 18:05', 'New app: EGX Analyzer, first connected from Desktop PC', ''],
+  ['info', 'Sep 30, 20:31', 'New app: RaceDeck, first connected from Desktop PC', ''],
+];
+const RULES = [
+  ['Gateway or storage server not responding', '2 failed checks in a row', true],
+  ['App passes its warning level', 'per app, default 80%', true],
+  ['App reaches its allocation', 'uploads refused or warned, per app', true],
+  ['Storage pool passes', () => thr('above', { min: 50, max: 95, step: 5, value: 80, unit: '% used' }), true],
+  ['Storage pool full', 'uploads refused for every app', true],
+  ['Internal storage free space low', () => thr('below', { min: 1, max: 30, value: 10, unit: 'GB' }), true],
+  ['SD card free space low', () => thr('below', { min: 1, max: 30, value: 10, unit: '%' }), true],
+  ['Battery low (charger problem)', () => thr('below', { min: 10, max: 60, step: 5, value: 30, unit: '%' }), true],
+  ['Phone temperature high', () => thr('above', { min: 35, max: 50, value: 42, unit: '°C' }), true],
+  ['Error rate rising', () => thr('above', { min: 0.5, max: 10, step: 0.5, value: 2, unit: '% / hour' }), true],
+  ['Nightly or weekly job failed', 'any failure', true],
+  ['SD card missing or unreadable', 'checked every 5 min', true],
+  ['New app or new device', 'every time one enrolls', true],
+  ['Storage was offline (phone restart)', 'reported after you unlock', true],
+];
+const thr = (word, opts) => `<div class="thr"><span>${word}</span>${slider({ ...opts, compact: true })}</div>`;
+const lvlColor = l => l === 'bad' ? C.red : l === 'warn' ? C.yellow : C.blue;
+function alertLine(a) { return `<div class="alert-line"><span class="dot" style="background:${lvlColor(a.lvl)}"></span><div><div>${a.text}</div><div class="muted">${a.detail}</div></div><span class="when">${a.when}</span></div>`; }
+RENDER.alerts = () => {
+  $('p-alerts').innerHTML = `
+    <h1>Alerts</h1><p class="sub">Alerts arrive as notifications on pocket and are listed here.</p>
+    <div class="panel"><h3>Active</h3>${ACTIVE.map(alertLine).join('')}</div>
+    <h2>Rules</h2>
+    <div class="panel"><div class="tw"><table>
+      <thead><tr><th>On</th><th>Alert when</th><th>Threshold</th></tr></thead>
+      <tbody>${RULES.map(([a, t, on]) => `<tr><td style="width:40px"><input type="checkbox"${on ? ' checked' : ''}></td><td>${a}</td><td class="muted" style="width:46%">${typeof t === 'function' ? t() : t}</td></tr>`).join('')}</tbody>
+    </table></div></div>
+    <h2>History</h2>
+    <div class="panel"><div class="tw"><table>
+      <thead><tr><th></th><th>When</th><th>Alert</th><th>Status</th></tr></thead>
+      <tbody>${ALERTHIST.map(([l, w, t, st]) => `<tr><td style="width:24px"><span class="dot" style="background:${lvlColor(l)}"></span></td><td class="muted">${w}</td><td class="wrap">${t}</td><td class="${st === 'active' ? 'warn' : 'muted'}">${st}</td></tr>`).join('')}</tbody>
+    </table></div></div>`;
+};
+
+/* settings */
+RENDER.settings = () => {
+  const cfg = `[pocket]\nendpoint = http://pocket:9000\nenroll_secret = ••••••••••••••••••••••••`;
+  $('p-settings').innerHTML = `
+    <h1>Settings</h1><p class="sub">Every setting Pocket Cloud has. Changes apply when saved; the services restart only if needed.</p>
+    <div class="panel"><h3>Connection</h3><div class="form">
+      ${frow('Storage address', 'What apps connect to', '<span class="mono">http://pocket:9000</span>')}
+      ${frow('Control panel address', '', '<span class="mono">http://pocket:8000</span>')}
+      ${frow('Enrollment secret', 'Saved once on each machine; apps use it to enroll themselves', '<span class="mono">••••••••••••••••••••••••</span><button class="btn sm">Show</button><button class="btn sm">Copy</button><button class="btn sm danger">Replace</button>')}
+      <div class="row"><div>Machine setup file<div class="h">Save as <span class="mono">%USERPROFILE%\\.pocket\\config</span> on a new machine; the Pocket library reads it</div></div><div class="c" style="display:block"><pre class="block">${cfg}</pre><div style="margin-top:6px"><button class="btn sm">Copy</button> <button class="btn sm">Copy as CI secrets</button></div></div></div>
+    </div></div>
+    <h2>Storage pool</h2>
+    <div class="panel"><div class="form" data-pool>
+      ${frow('Internal storage for Pocket', 'Recent files, logs and statistics', slider({ min: Math.ceil(POOL.intUsed), max: intPoolMax(POOL.reserve), value: POOL.internal, unit: 'GB', cls: 'sl-pint',
+        marks: [{ v: POOL.intUsed, label: 'in use ' + fgb(POOL.intUsed), color: C.muted }] }))}
+      ${frow('SD card for Pocket', 'Older files, the nightly copy and the 14-day undo', slider({ min: Math.ceil(POOL.sdUsed), max: sdPoolMax(), value: POOL.sd, unit: 'GB', cls: 'sl-psd',
+        marks: [{ v: POOL.sdUsed, label: 'in use ' + fgb(POOL.sdUsed), color: C.muted }] }))}
+      ${frow('Always leave free for Android', 'Keeps the phone itself from running out of space', slider({ min: 2, max: 20, value: POOL.reserve, unit: 'GB', cls: 'sl-res' }))}
+      <div class="row"><span></span><div class="c"><div class="pool-preview muted"></div></div></div>
+      ${frow('When the pool is full', 'Applies to every app', '<span class="muted">New uploads are refused with a "pool full" error, and you are alerted</span>')}
+    </div></div>
+    <h2>New apps</h2>
+    <div class="panel"><div class="form">
+      ${frow('Create apps automatically', 'Otherwise new apps wait for you here', '<input type="checkbox" checked>')}
+      ${frow('Default allocation', 'If the pool has less unpromised, a new app gets what is left', slider({ min: 0.5, max: 20, step: 0.5, value: 3, unit: 'GB' }))}
+      ${frow('Warn at', '', slider({ min: 50, max: 95, step: 5, value: 80, unit: '%' }))}
+      ${frow('At 100%', '', '<select><option selected>Refuse uploads</option><option>Warn only</option></select>')}
+      ${frow('Default move to SD card after', '', slider({ min: 1, max: 60, value: 7, unit: 'days' }))}
+    </div></div>
+    <h2>Storage and nightly jobs</h2>
+    <div class="panel"><div class="form">
+      ${frow('Nightly jobs start at', '', '<input type="time" value="03:00">')}
+      ${frow('Move early when the internal pool is', 'Full to this level · oldest files first', slider({ min: 50, max: 100, step: 5, value: POOL.earlyMove, unit: '% full' }))}
+      ${frow('Never move files changed in the last', 'Protects files still being written', slider({ min: 1, max: 72, value: 24, unit: 'hours' }))}
+      ${frow('Keep deleted and overwritten files for', 'The undo period', slider({ min: 1, max: 60, value: 14, unit: 'days' }))}
+      ${frow('Integrity check', '', '<select><option selected>Sunday</option><option>Saturday</option><option>Every day</option></select> at <input type="time" value="04:00">')}
+      ${frow('SD card folder', 'Termux\'s own folder on the card (Android 10 limit)', '<span class="mono muted">/storage/3A21-0F4B/Android/data/com.termux/files/pocket</span>')}
+    </div></div>
+    <h2>Logs and statistics</h2>
+    <div class="panel"><div class="form">
+      ${frow('Keep detailed request logs for', '', slider({ min: 7, max: 365, value: 90, unit: 'days' }))}
+      ${frow('Keep daily totals', '', '<select><option selected>Forever</option><option>2 years</option><option>1 year</option></select>')}
+      ${frow('Record file names in logs', 'Off keeps only app, device, size and result', '<input type="checkbox" checked>')}
+    </div></div>
+    <h2>Health checks</h2>
+    <div class="panel"><div class="form">
+      ${frow('Run every', '', slider({ min: 1, max: 30, value: 5, unit: 'minutes' }))}
+      ${frow('Alert thresholds', 'Per alert, on the Alerts page', '<a href="#alerts">Edit alert rules</a>')}
+    </div></div>
+    <h2>Server</h2>
+    <div class="panel"><div class="form">
+      ${frow('Read-only mode', 'Apps can read but not write or delete', '<input type="checkbox">')}
+      ${frow('Request timeout', '', slider({ min: 10, max: 300, step: 10, value: 60, unit: 'seconds' }))}
+      ${frow('Large upload buffer', 'Memory for uploads sent in parts', slider({ min: 16, max: 256, step: 16, value: 64, unit: 'MB' }))}
+      ${frow('Unfinished uploads expire after', '', slider({ min: 1, max: 72, value: 24, unit: 'hours' }))}
+      ${frow('Directory cache', 'Refreshed automatically after each nightly move', slider({ min: 5, max: 300, step: 5, value: 30, unit: 'seconds' }))}
+      ${frow('Restart services', 'Gateway and storage server', '<button class="btn">Restart</button>')}
+    </div></div>
+    <h2>Control panel</h2>
+    <div class="panel"><div class="form">
+      ${frow('Admin password', '', '<button class="btn">Change password</button>')}
+      ${frow('Settings backup', 'All settings, apps and keys in one file', '<button class="btn">Download backup</button><button class="btn">Restore from file</button>')}
+    </div></div>
+    <div class="actions" style="margin-top:16px"><button class="btn primary">Save changes</button><button class="btn">Discard</button></div>`;
+  refreshPool($('p-settings').querySelector('[data-pool]'));
+};
+
+/* logs */
+const LOGKEYS = {
+  'egx-analyzer': ['shared/prices/COMI.CA/2026-10-10.json', 'shared/prices/ETEL.CA/2026-10-10.json', 'shared/analysis/2026-10-10/report.json', 'device/settings.json', 'shared/exports/2026-10-10-daily.csv'],
+  'signal-lab': ['shared/candles/BTCUSDT/1m/2026-10-10.parquet', 'shared/candles/ETHUSDT/5m/2026-10-10.parquet', 'device/state/scanner.json'],
+  'racedeck': ['shared/sessions/2026/mexico/fp2/timing.parquet', 'shared/sessions/2026/mexico/fp2/positions.parquet', 'device/widgets/layout.json'],
+  'deskglow': ['device/screens/clock-layout.json', 'device/settings.json'],
+  'spen-lab': ['device/recordings/2026-10-07-circle.json'],
+};
+const LOGS = (() => {
+  const out = []; let t = new Date(NOW);
+  const live = APPS.filter(a => a.req > 0);
+  for (let i = 0; i < 60; i++) {
+    t = new Date(t - (2 + R() * 40) * 1000);
+    const a = pick(live, live.map(x => x.req));
+    const dev = pick(a.devs, a.devs.map(d => a.reqBy[d]));
+    const op = pick(['GetObject', 'PutObject', 'ListObjectsV2', 'HeadObject', 'DeleteObject'], [60, 18, 12, 8, 2]);
+    let key = pick(LOGKEYS[a.id], LOGKEYS[a.id].map(() => 1));
+    if (op === 'ListObjectsV2') key = key.split('/').slice(0, -1).join('/') + '/';
+    let status = op === 'DeleteObject' ? 204 : 200;
+    if (op === 'HeadObject' && R() < 0.25) status = 404;
+    const bytes = op === 'GetObject' || op === 'PutObject' ? (key.endsWith('.parquet') ? 1.5 * MB + R() * 9 * MB : 3 * KB + R() * 400 * KB) : op === 'ListObjectsV2' ? 2 * KB + R() * 18 * KB : 0;
+    out.push({ t, app: a.id, dev, op, key, status, bytes, ms: Math.round(op === 'GetObject' && bytes > MB ? 80 + R() * 400 : 6 + R() * 40) });
+  }
+  return out;
+})();
+const SYSLOG = `2026-10-10 22:55:01  health   11 of 11 checks passed (battery 100%, 33.8 °C, internal free 49.8 GB, SD free 228.7 GB)
+2026-10-10 22:50:01  health   11 of 11 checks passed
+2026-10-10 03:30:04  jobs     undo cleanup finished: 37 files, 21 MB removed (deleted before Sep 26)
+2026-10-10 03:16:02  jobs     move finished: 214 files, 88 MB moved to SD card; directory cache refreshed
+2026-10-10 03:10:00  jobs     move started: 6 apps, rule = unchanged ≥ move age and not changed in last 24 h
+2026-10-10 03:01:48  jobs     nightly copy finished: 318 files, 76 MB copied to SD card
+2026-10-10 03:00:00  jobs     nightly copy started
+2026-10-09 21:14:37  alerts   egx-analyzer at 80.2% of 3 GB allocation (warning sent)
+2026-10-08 16:40:12  enroll   device Galaxy S24 Ultra (100.88.3.21) joined egx-analyzer; key PK…issued
+2026-10-06 15:37:01  alerts   phone temperature back to 39.4 °C (cleared)
+2026-10-06 15:02:01  alerts   phone temperature 43.1 °C above 42 °C (warning sent)
+2026-10-04 02:20:14  gateway  started, listening on 100.92.14.7:9000
+2026-10-04 02:20:13  storage  rclone serve s3 started for 6 apps
+2026-10-04 02:20:11  boot     Termux:Boot ran after unlock; last heartbeat before restart 02:11:03
+2026-10-04 02:20:11  alerts   storage was offline 02:11–02:20 (phone restart, waited for unlock)`;
+let LOGF = { app: '', dev: '', op: '', status: '', q: '', tab: 'req' };
+RENDER.logs = (arg) => {
+  if (arg) { LOGF = { ...LOGF, app: arg, tab: 'req' }; setAddress('logs', true); }
+  const rows = LOGS.filter(r => (!LOGF.app || r.app === LOGF.app) && (!LOGF.dev || r.dev === LOGF.dev) && (!LOGF.op || r.op === LOGF.op)
+    && (!LOGF.status || (LOGF.status === 'err' ? r.status >= 400 : r.status < 400)) && (!LOGF.q || r.key.includes(LOGF.q)));
+  const sel = (k, opts) => `<select onchange="LOGF.${k}=this.value;RENDER.logs()">${opts.map(([v, l]) => `<option value="${v}"${LOGF[k] === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
+  $('p-logs').innerHTML = `
+    <h1>Logs</h1><p class="sub">Every request to the server is recorded. Detailed logs are kept for 90 days.</p>
+    <div class="tabs"><a class="${LOGF.tab === 'req' ? 'on' : ''}" onclick="LOGF.tab='req';RENDER.logs()">Requests</a><a class="${LOGF.tab === 'sys' ? 'on' : ''}" onclick="LOGF.tab='sys';RENDER.logs()">System</a></div>
+    ${LOGF.tab === 'sys' ? `<pre class="block log">${SYSLOG}</pre>` : `
+    <div class="filters">
+      ${sel('app', [['', 'All apps'], ...APPS.map(a => [a.id, a.name])])}
+      ${sel('dev', [['', 'All devices'], ...Object.entries(DEVICES).map(([k, d]) => [k, d.name])])}
+      ${sel('op', [['', 'All operations'], ...['GetObject', 'PutObject', 'ListObjectsV2', 'HeadObject', 'DeleteObject'].map(o => [o, o])])}
+      ${sel('status', [['', 'All results'], ['ok', 'Successful'], ['err', 'Errors']])}
+      <input type="text" placeholder="Search file name" value="${esc(LOGF.q)}" onchange="LOGF.q=this.value;RENDER.logs()">
+      <span class="muted" style="align-self:center">${rows.length} of ${LOGS.length} shown</span>
+    </div>
+    <div class="panel"><div class="tw"><table>
+      <thead><tr><th>Time</th><th>App</th><th>Device</th><th>Operation</th><th>File</th><th class="num">Size</th><th class="num">Result</th><th class="num">Took</th></tr></thead>
+      <tbody>${rows.map(r => `<tr><td class="mono muted">${hms(r.t)}</td><td>${APPS.find(a => a.id === r.app).name}</td><td class="muted">${DEVICES[r.dev].name}</td>
+        <td class="mono">${r.op}</td><td class="mono">${esc(r.key)}</td><td class="num">${r.bytes ? fb(r.bytes) : '—'}</td>
+        <td class="num ${r.status >= 400 ? 'warn' : 'muted'}">${r.status}</td><td class="num muted">${r.ms} ms</td></tr>`).join('') || '<tr><td colspan="8" class="muted">No requests match.</td></tr>'}</tbody>
+    </table></div></div>`}`;
+};
+
+route();
+</script>
+</body>
+</html>

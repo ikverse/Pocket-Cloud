@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Pocket blue: the brand colour (app icon and logo) -->
+    <color name="pocket_blue">#FF3D71D9</color>
+    <!-- Pocket Drive's own icon background, so it differs from Pocket Cloud's blue -->
+    <color name="drive_teal">#FF00897B</color>
+    <color name="white">#FFFFFFFF</color>
+</resources>

@@ -1,0 +1,39 @@
+# Gradle and IDE
+.gradle/
+build/
+.idea/
+.kotlin/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+local.properties
+
+# Crash dumps the JVM leaves next to a build
+hs_err_pid*.log
+replay_pid*.log
+
+# The release signing key belongs outside the repository and in GitHub secrets; this is here so a
+# copy left in the working tree cannot be committed by accident.
+*.jks
+*.keystore
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+
+# Node
+node_modules/
+
+# Local state and downloads
+*.log
+*.db
+*.sqlite
+*.sqlite3
+state/
+tools/rclone/*.exe
+tools/rclone/*.zip
