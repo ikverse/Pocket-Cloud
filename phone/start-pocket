@@ -1,0 +1,6 @@
+#!/data/data/com.termux/files/usr/bin/sh
+# Termux:Boot runs this after the phone starts (setup.sh copies it to ~/.termux/boot/ and runs it once).
+# The wake lock keeps Android from putting Termux to sleep while Pocket Cloud serves requests.
+termux-wake-lock
+mkdir -p "$HOME/pocket-state/logs"
+nohup "$HOME/pocket-cloud/phone/run.sh" >> "$HOME/pocket-state/logs/supervisor.log" 2>&1 &

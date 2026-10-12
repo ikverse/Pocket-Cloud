@@ -1,0 +1,14 @@
+{
+  "name": "pocket-cloud",
+  "version": "0.1.0",
+  "description": "Connect an app to Pocket Cloud, a private S3-compatible storage server, in one line.",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "3.1149.0"
+  }
+}

@@ -1,0 +1,164 @@
+name: Android apps
+
+# Two apps, one repository. A release is cut by pushing a tag with the app's prefix - `panel-v0.2.0`
+# for the control panel app, `drive-v0.2.0` for Pocket Drive - and the tag is also what each app
+# looks for when it checks for updates: it reads the releases list and takes the newest one with
+# its own prefix, so one app's release never reaches the other.
+on:
+  push:
+    tags:
+      - 'panel-v*'
+      - 'drive-v*'
+  workflow_dispatch:
+    inputs:
+      app:
+        description: Which app to build (tests and a debug APK, no release)
+        type: choice
+        options: [panel, drive]
+        required: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Which app this run is for, and where it lives. The tag prefix decides; a manual run says.
+      - name: Pick the app
+        id: app
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/panel-v* ]]; then app=panel
+          elif [[ "$GITHUB_REF" == refs/tags/drive-v* ]]; then app=drive
+          else app="${{ github.event.inputs.app }}"
+          fi
+          echo "app=$app" >> "$GITHUB_OUTPUT"
+          echo "dir=android-$app" >> "$GITHUB_OUTPUT"
+          echo "apk=pocket-$app" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "version=${GITHUB_REF_NAME#*-v}" >> "$GITHUB_OUTPUT"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests
+        working-directory: ${{ steps.app.outputs.dir }}
+        run: ./gradlew :app:testDebugUnitTest --no-daemon
+
+      - name: Upload test report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-${{ steps.app.outputs.app }}
+          path: ${{ steps.app.outputs.dir }}/app/build/reports/tests/
+
+      - name: Assemble debug
+        if: steps.app.outputs.release == 'false'
+        working-directory: ${{ steps.app.outputs.dir }}
+        run: ./gradlew :app:assembleDebug --no-daemon
+
+      - name: Upload debug APK
+        if: steps.app.outputs.release == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.app.outputs.apk }}-debug
+          path: ${{ steps.app.outputs.dir }}/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      # The version in the tag has to be the version the build calls itself, or the app would
+      # install a release and still believe it was out of date (or never be offered it at all).
+      - name: Check the tag matches the app's version
+        if: steps.app.outputs.release == 'true'
+        run: |
+          built=$(grep -oE 'val appVersionName = "[^"]+"' "${{ steps.app.outputs.dir }}/app/build.gradle.kts" | cut -d'"' -f2)
+          if [ "$built" != "${{ steps.app.outputs.version }}" ]; then
+            echo "Tag says ${{ steps.app.outputs.version }} but build.gradle.kts says $built; bump appVersionName first." >&2
+            exit 1
+          fi
+
+      # The notes this tag ships are whatever the app's CHANGELOG.md says about it - written by
+      # hand as part of cutting the release. Refused rather than skipped when the entry is missing.
+      - name: Extract this version's release notes
+        if: steps.app.outputs.release == 'true'
+        run: |
+          version="${{ steps.app.outputs.version }}"
+          awk -v needle="[$version]" '
+            /^## \[/ {
+              if (matched) exit
+              if (index($0, needle) > 0) { matched = 1 }
+              next
+            }
+            matched && NF { print }
+          ' "${{ steps.app.outputs.dir }}/CHANGELOG.md" > "$RUNNER_TEMP/release-notes.md"
+          if [ ! -s "$RUNNER_TEMP/release-notes.md" ]; then
+            echo "${{ steps.app.outputs.dir }}/CHANGELOG.md has no entry for $version; add one before tagging." >&2
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/release-notes.md"
+
+      # Refused rather than skipped: an unsigned APK attached to a release is one every device
+      # would be offered and none could install.
+      - name: Restore the signing key
+        if: steps.app.outputs.release == 'true'
+        env:
+          POCKET_KEYSTORE_BASE64: ${{ secrets.POCKET_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$POCKET_KEYSTORE_BASE64" ]; then
+            echo "POCKET_KEYSTORE_BASE64 is not set; a release cannot be signed." >&2
+            exit 1
+          fi
+          printf '%s' "$POCKET_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/pocket-release.jks"
+
+      - name: Assemble release
+        if: steps.app.outputs.release == 'true'
+        working-directory: ${{ steps.app.outputs.dir }}
+        env:
+          POCKET_KEYSTORE_FILE: ${{ runner.temp }}/pocket-release.jks
+          POCKET_KEYSTORE_PASSWORD: ${{ secrets.POCKET_KEYSTORE_PASSWORD }}
+          POCKET_KEY_ALIAS: ${{ secrets.POCKET_KEY_ALIAS }}
+          POCKET_KEY_PASSWORD: ${{ secrets.POCKET_KEY_PASSWORD }}
+        run: ./gradlew :app:assembleRelease --no-daemon
+
+      # The development machine holds no key, so every build there is unsigned whether the wiring
+      # is right or not. This is the first build that can tell, and the cheapest place to catch it.
+      - name: Refuse an unsigned build
+        if: steps.app.outputs.release == 'true'
+        run: |
+          dir="${{ steps.app.outputs.dir }}/app/build/outputs/apk/release"
+          if ls "$dir"/*-unsigned.apk >/dev/null 2>&1 || ! ls "$dir"/app-release.apk >/dev/null 2>&1; then
+            echo "The release build did not produce a signed app-release.apk." >&2
+            ls -la "$dir" >&2
+            exit 1
+          fi
+
+      # Named for the app and the version: that name is what the app recognises as its own kept
+      # download, and what a person picks from when installing by hand.
+      - name: Name the APK for its version
+        if: steps.app.outputs.release == 'true'
+        run: |
+          cd "${{ steps.app.outputs.dir }}/app/build/outputs/apk/release"
+          mv app-release.apk "${{ steps.app.outputs.apk }}-${{ steps.app.outputs.version }}.apk"
+          ls -la
+
+      - name: Publish the release
+        if: steps.app.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "${{ steps.app.outputs.dir }}/app/build/outputs/apk/release/${{ steps.app.outputs.apk }}-${{ steps.app.outputs.version }}.apk" \
+            --title "${{ steps.app.outputs.app == 'panel' && 'Pocket Cloud panel' || 'Pocket Drive' }} ${{ steps.app.outputs.version }}" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"
+
+      - name: Forget the signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/pocket-release.jks"

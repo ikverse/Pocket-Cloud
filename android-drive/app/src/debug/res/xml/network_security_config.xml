@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This app only talks to your own Pocket Cloud server, over Tailscale (which encrypts the connection) or your home
+     network. The server speaks plain http, and its address can be a name or any private address, so plain http is
+     allowed everywhere. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

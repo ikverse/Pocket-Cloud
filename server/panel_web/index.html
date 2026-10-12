@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pocket Cloud</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/uPlot.min.css">
+<link rel="stylesheet" href="panel.css">
+<script src="vendor/uPlot.iife.min.js"></script>
+</head>
+<body>
+<div id="gate" class="gate" hidden></div>
+<div id="shell" hidden>
+  <header class="top">
+    <span class="brand">Pocket Cloud</span>
+    <span class="host" id="host"></span>
+    <span id="health"></span>
+    <span class="spacer"></span>
+    <span class="muted" id="updated"></span>
+    <a class="signout" id="signout">Sign out</a>
+  </header>
+  <div class="layout">
+    <nav class="side" id="nav"></nav>
+    <main>
+      <section id="p-overview" hidden></section>
+      <section id="p-storage" hidden></section>
+      <section id="p-apps" hidden></section>
+      <section id="p-devices" hidden></section>
+      <section id="p-files" hidden></section>
+      <section id="p-jobs" hidden></section>
+      <section id="p-alerts" hidden></section>
+      <section id="p-settings" hidden></section>
+      <section id="p-logs" hidden></section>
+    </main>
+  </div>
+</div>
+<div class="modal" id="modal" hidden><div class="panel modal-box" id="modal-box"></div></div>
+<div class="toast" id="toast" hidden></div>
+<input type="file" id="file-pick" hidden>
+<script src="panel.js"></script>
+</body>
+</html>

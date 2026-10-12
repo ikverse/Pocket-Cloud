@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Pocket blue: the brand colour (app icon and logo) -->
+    <color name="pocket_blue">#FF3D71D9</color>
+    <color name="white">#FFFFFFFF</color>
+</resources>
