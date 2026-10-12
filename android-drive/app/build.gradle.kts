@@ -7,7 +7,7 @@ plugins {
 // One place decides the version. Bump the name here; the code is derived from it so the two can
 // never disagree. A release is cut by pushing the tag `drive-v<this name>`, which is what the app
 // looks for when it checks for updates.
-val appVersionName = "0.1.0"
+val appVersionName = "0.2.0"
 val appVersionCode = appVersionName.split(".").let { (major, minor, patch) ->
     major.toInt() * 10_000 + minor.toInt() * 100 + patch.toInt()
 }

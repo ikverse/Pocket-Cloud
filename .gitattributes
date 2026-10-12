@@ -1,0 +1,12 @@
+* text=auto
+
+# Scripts that run on the phone (Termux) or on a Linux CI runner must never pick up CRLF.
+*.sh text eol=lf
+gradlew text eol=lf
+phone/** text eol=lf
+
+# Binary
+*.png binary
+*.jpg binary
+*.jar binary
+*.apk binary
