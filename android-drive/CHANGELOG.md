@@ -5,7 +5,7 @@ the GitHub release, and refuses to publish a version that has no entry.
 
 ---
 
-## [0.2.0] — unreleased
+## [0.2.0] — 2026-10-12
 
 - The app can now update itself: Settings › About checks the Pocket Cloud releases on GitHub,
   downloads the newer build and hands it to Android's installer. A check runs when the app opens
