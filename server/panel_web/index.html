@@ -2,43 +2,39 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Pocket Cloud</title>
+<meta name="theme-color" content="#e9edf5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0d1220" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="vendor/uPlot.min.css">
 <link rel="stylesheet" href="panel.css">
+<script>try { const t = localStorage.getItem("pocketTheme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}</script>
 <script src="vendor/uPlot.iife.min.js"></script>
 </head>
 <body>
 <div id="gate" class="gate" hidden></div>
-<div id="shell" hidden>
-  <header class="top">
-    <span class="brand">Pocket Cloud</span>
-    <span class="host" id="host"></span>
-    <span id="health"></span>
-    <span class="spacer"></span>
-    <span class="muted" id="updated"></span>
-    <a class="signout" id="signout">Sign out</a>
-  </header>
-  <div class="layout">
-    <nav class="side" id="nav"></nav>
-    <main>
-      <section id="p-overview" hidden></section>
-      <section id="p-storage" hidden></section>
-      <section id="p-apps" hidden></section>
-      <section id="p-devices" hidden></section>
-      <section id="p-files" hidden></section>
-      <section id="p-jobs" hidden></section>
-      <section id="p-alerts" hidden></section>
-      <section id="p-settings" hidden></section>
-      <section id="p-logs" hidden></section>
-    </main>
-  </div>
+<div id="shell" class="shell" hidden>
+  <nav class="rail" aria-label="Main">
+    <div class="brand"><img src="favicon.svg" alt="">Pocket Cloud</div>
+    <div id="rail-links"></div>
+    <div class="foot">
+      <div class="row"><span class="dot" id="health-dot"></span><span id="health">Checking…</span></div>
+      <span class="mono" id="host"></span>
+      <span id="updated"></span>
+      <div class="seg" role="group" aria-label="Theme" id="theme-seg"></div>
+      <a id="signout">Sign out</a>
+    </div>
+  </nav>
+  <main id="view" tabindex="-1"></main>
 </div>
-<div class="modal" id="modal" hidden><div class="panel modal-box" id="modal-box"></div></div>
-<div class="toast" id="toast" hidden></div>
+<nav class="tabs" id="tabs" aria-label="Main" hidden></nav>
+<div class="modal" id="modal" hidden><div class="card modal-box" id="modal-box" role="dialog" aria-modal="true"></div></div>
+<div class="toast" id="toast" hidden role="status"></div>
 <input type="file" id="file-pick" hidden>
 <script src="panel.js"></script>
 </body>
