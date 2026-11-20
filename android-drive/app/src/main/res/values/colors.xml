@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Pocket blue: the brand colour (app icon and logo) -->
-    <color name="pocket_blue">#FF3D71D9</color>
-    <!-- Pocket Drive's own icon background, so it differs from Pocket Cloud's blue -->
-    <color name="drive_teal">#FF00897B</color>
-    <color name="white">#FFFFFFFF</color>
+    <!-- docs/brand.md: the icon tile, the same in light and dark -->
+    <color name="ic_launcher_background">#FF161D31</color>
+    <!-- Screen background (brand token bg) so the window does not flash another colour before Compose draws -->
+    <color name="window_bg">#FFE9EDF5</color>
 </resources>

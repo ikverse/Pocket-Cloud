@@ -37,7 +37,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -83,7 +82,7 @@ import java.io.File
 /** Make or change a sync pair. [id] is a pair's id, -1 for a new photo folder, -2 for a new phone folder. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SyncPairEditor(id: Long, onClose: () -> Unit) {
+fun SyncPairEditor(id: Long, onClose: () -> Unit, onLog: (Long) -> Unit = {}) {
     val context = LocalContext.current
     val g = (context.applicationContext as DriveApplication).graph
     val scope = rememberCoroutineScope()
@@ -168,6 +167,12 @@ fun SyncPairEditor(id: Long, onClose: () -> Unit) {
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { inner ->
         Column(Modifier.padding(inner).fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 32.dp)) {
+            existing?.let { p ->
+                Row(Modifier.padding(16.dp, 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    cloud.pocket.drive.ui.components.PrimaryButton("Sync now", { SyncScheduler.runNow(context, p.id) }, small = true)
+                    cloud.pocket.drive.ui.components.PlainButton("Log and trash", { onLog(p.id) }, small = true)
+                }
+            }
             OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(16.dp, 8.dp))
             if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
 
@@ -201,7 +206,7 @@ fun SyncPairEditor(id: Long, onClose: () -> Unit) {
                         FilterChip(scope_ == "videos", { scope_ = "videos" }, label = { Text("Videos") })
                     }
                     ListItem(headlineContent = { Text("File by date") }, supportingContent = { Text("Put files in year and month folders, by the date taken") },
-                        trailingContent = { Switch(byDate, { byDate = it }) })
+                        trailingContent = { cloud.pocket.drive.ui.components.PSwitch(byDate, { byDate = it }) })
                 }
             } else {
                 if (!Net.folderSyncSupported()) {
@@ -247,13 +252,13 @@ fun SyncPairEditor(id: Long, onClose: () -> Unit) {
                 }
                 if (mode == TWO_WAY) ListItem(headlineContent = { Text("Newest file wins") },
                     supportingContent = { Text("When both sides changed a file, keep the newer one. Otherwise both are kept.") },
-                    trailingContent = { Switch(newestWins, { newestWins = it }) })
+                    trailingContent = { cloud.pocket.drive.ui.components.PSwitch(newestWins, { newestWins = it }) })
             }
             if (kind == KIND_FOLDER) {
                 SectionTitle("Privacy")
                 ListItem(headlineContent = { Text("Encrypt in a vault") },
                     supportingContent = { Text("Files are encrypted on this phone, with their names, before they go up. Anyone with the server's storage can't read them.") },
-                    trailingContent = { Switch(encrypt, { encrypt = it }) })
+                    trailingContent = { cloud.pocket.drive.ui.components.PSwitch(encrypt, { encrypt = it }) })
                 if (encrypt && coveringVault != null) Text("Uses the vault \"${coveringVault!!.name}\" (its password is saved on this phone).",
                     style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp))
                 if (encrypt && coveringVault == null) {
@@ -265,8 +270,8 @@ fun SyncPairEditor(id: Long, onClose: () -> Unit) {
                 }
             }
             SectionTitle("When")
-            ListItem(headlineContent = { Text("Only on Wi-Fi") }, trailingContent = { Switch(wifiOnly, { wifiOnly = it }) })
-            ListItem(headlineContent = { Text("Only while charging") }, trailingContent = { Switch(chargingOnly, { chargingOnly = it }) })
+            ListItem(headlineContent = { Text("Only on Wi-Fi") }, trailingContent = { cloud.pocket.drive.ui.components.PSwitch(wifiOnly, { wifiOnly = it }) })
+            ListItem(headlineContent = { Text("Only while charging") }, trailingContent = { cloud.pocket.drive.ui.components.PSwitch(chargingOnly, { chargingOnly = it }) })
 
             if (existing != null) OutlinedButton(onClick = { deleting = true }, modifier = Modifier.padding(16.dp)) {
                 Text("Stop syncing and remove", color = MaterialTheme.colorScheme.error)
