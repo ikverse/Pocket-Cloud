@@ -104,6 +104,7 @@ folders outright; no two sessions edit the same file.** Shared rules:
 - Apps (E, F, G) feature-detect from `/_pocket/health` `features`; anything the running server lacks is hidden,
   not shown disabled.
 - Each session ends with its tests passing and its branch **not merged**.
+- **Never start the Android emulator**, in any session, for any reason. Skip any check that would need it.
 
 | # | Session | Branch | Owns | Depends on |
 |---|---|---|---|---|
@@ -194,8 +195,8 @@ folders outright; no two sessions edit the same file.** Shared rules:
 > a screen needs a new read-only query. New PD monogram launcher icon (foreground, background, monochrome)
 > replacing the folder icon; bundle the three fonts. Do not use the new server features yet (step 2 does).
 > Build with `JAVA_HOME="C:/Program Files/Android/Android Studio/jbr" ./gradlew :app:assembleDebug
-> :app:testDebugUnitTest`. Check on the emulator against the demo server. Install on a real phone only with
-> `--user 0` (see the project memory about Dual Messenger). Done: builds, unit tests pass, every current
+> :app:testDebugUnitTest`. Never start the Android emulator. Install on a real phone only when the user says
+> so, with `--user 0` (see the project memory about Dual Messenger). Done: builds, unit tests pass, every current
 > feature reachable, screenshots of each screen in both themes shown to the user.
 
 ### Brief G — Android panel redesign
