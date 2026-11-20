@@ -33,14 +33,15 @@ import boto3
 import botocore.session
 from botocore.config import Config
 
+from ._errors import (AccessDenied, CursorExpired, FeatureOff, NotFound, PocketError, PreconditionFailed,
+                      QuotaExceeded, RateLimited, ReadOnly, Unreachable)
+
 __version__ = "0.1.0"
-__all__ = ["connect", "PocketError"]
+__all__ = ["connect", "app", "App", "PocketError", "NotFound", "PreconditionFailed", "QuotaExceeded", "ReadOnly",
+           "AccessDenied", "CursorExpired", "RateLimited", "FeatureOff", "Unreachable",
+           "Entry", "Change", "Release", "ReleaseFile", "Share", "SyncResult"]
 
 DEVICE_ID = re.compile(r"^[A-Za-z0-9-]{8,64}$")
-
-
-class PocketError(Exception):
-    """Pocket Cloud could not be reached or refused this app or device."""
 
 
 def _home(home=None):
@@ -194,3 +195,6 @@ def connect(app, *, endpoint=None, enroll_secret=None, device_id=None, device_na
 
     client.meta.events.register_first("needs-retry.s3", reenroll_and_retry)
     return client
+
+
+from ._app import App, Change, Entry, Release, ReleaseFile, Share, SyncResult, app  # noqa: E402
