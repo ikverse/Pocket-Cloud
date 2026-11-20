@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pocket Drive — app mockup v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #e9edf5; --surface: #ffffff; --sunk: #f3f5fa; --line: #d5dbe8;
+  --ink: #18203a; --soft: #56607d; --faint: #8a93ab;
+  --accent: #3350e8; --accent-ink: #ffffff; --accent-wash: #e3e8ff;
+  --ok: #17966b; --warn: #c97a00; --warn-wash: #fff1d6; --bad: #d1344b; --bad-wash: #ffe4e8;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", Consolas, ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0d1220; --surface: #161d31; --sunk: #111728; --line: #29324c;
+  --ink: #e8ecf8; --soft: #a3adc8; --faint: #6f7a98;
+  --accent: #8198ff; --accent-ink: #0d1220; --accent-wash: #1f2a52;
+  --ok: #4cd0a0; --warn: #f1b445; --warn-wash: #3a2e12; --bad: #ff7388; --bad-wash: #44202a;
+} }
+:root[data-theme="dark"] {
+  --bg: #0d1220; --surface: #161d31; --sunk: #111728; --line: #29324c;
+  --ink: #e8ecf8; --soft: #a3adc8; --faint: #6f7a98;
+  --accent: #8198ff; --accent-ink: #0d1220; --accent-wash: #1f2a52;
+  --ok: #4cd0a0; --warn: #f1b445; --warn-wash: #3a2e12; --bad: #ff7388; --bad-wash: #44202a;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); -webkit-font-smoothing: antialiased; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
+h1 { font: 700 26px/1.12 var(--display); letter-spacing: -.02em; margin: 0; }
+h2 { font: 700 16px/1.2 var(--display); margin: 0 0 10px; }
+h3 { font: 600 15px/1.3 var(--body); margin: 0; }
+p { margin: 0; }
+.soft { color: var(--soft); } .faint { color: var(--faint); } .small { font-size: 13px; } .num { font-variant-numeric: tabular-nums; }
+.mono { font-family: var(--mono); font-size: 12.5px; }
+[hidden] { display: none !important; }
+
+/* the stage around the phone (desktop only) */
+.stage { min-height: 100%; display: grid; grid-template-columns: 260px auto; gap: 48px; justify-content: center; align-items: center; padding: 28px; }
+.side h1 { font-size: 30px; margin-bottom: 8px; }
+.side nav { display: grid; gap: 2px; margin: 18px 0; }
+.side nav button { text-align: left; border: 0; background: none; padding: 7px 10px; border-radius: 9px; color: var(--soft); font-weight: 500; }
+.side nav button:hover { background: var(--surface); color: var(--ink); }
+.side nav button[aria-current="true"] { background: var(--ink); color: var(--bg); }
+.frame { width: 392px; height: 812px; max-height: calc(100vh - 40px); border: 3px solid var(--ink); border-radius: 46px; padding: 10px; background: var(--surface); box-shadow: 0 30px 60px -30px rgba(24,32,58,.45); }
+.app { position: relative; height: 100%; border-radius: 34px; overflow: hidden; background: var(--bg); display: flex; flex-direction: column; }
+.view { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 22px 16px 20px; scrollbar-width: none; }
+.view::-webkit-scrollbar { display: none; }
+
+/* pieces */
+.plain { border: 0; background: none; padding: 0; text-align: left; width: 100%; }   /* before .card and .list so they win */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 14px 16px; }
+.stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.row { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.grow { flex: 1; min-width: 0; }
+.clip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list > * { padding: 11px 0; border-top: 1px solid var(--line); }
+.list > *:first-child { border-top: 0; padding-top: 0; }
+.list > *:last-child { padding-bottom: 0; }
+.btn { border: 1px solid var(--line); background: var(--surface); padding: 8px 14px; border-radius: 12px; font-weight: 600; white-space: nowrap; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.small { padding: 5px 10px; font-size: 13px; border-radius: 9px; }
+.btn.wide { width: 100%; padding: 12px; }
+.badge { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--sunk); color: var(--soft); border: 1px solid var(--line); white-space: nowrap; }
+.badge.warn { background: var(--warn-wash); color: var(--warn); border-color: transparent; }
+.badge.bad { background: var(--bad-wash); color: var(--bad); border-color: transparent; }
+.badge.ok { background: var(--accent-wash); color: var(--accent); border-color: transparent; }
+.meter { height: 8px; border-radius: 999px; background: var(--sunk); border: 1px solid var(--line); overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.seg { display: flex; background: var(--sunk); border: 1px solid var(--line); border-radius: 12px; padding: 3px; }
+.seg button { flex: 1; border: 0; background: none; padding: 7px 8px; border-radius: 9px; color: var(--soft); font-weight: 600; font-size: 14px; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(24,32,58,.15); }
+.sw { position: relative; width: 42px; height: 24px; border-radius: 999px; background: var(--line); border: 0; flex: none; }
+.sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--surface); transition: left .15s; }
+.sw[aria-checked="true"] { background: var(--accent); }
+.sw[aria-checked="true"]::after { left: 21px; }
+.ico { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; flex: none; font: 600 10.5px var(--mono); color: #fff; text-transform: uppercase; }
+.ico.folder { background: var(--accent-wash); color: var(--accent); }
+.search { width: 100%; border: 1px solid var(--line); background: var(--surface); border-radius: 14px; padding: 11px 14px; }
+.chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; }
+.chip { flex: none; width: 128px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px; text-align: left; }
+.note { background: var(--warn-wash); border-radius: 16px; padding: 14px 16px; }
+.fab { position: absolute; right: 16px; bottom: 132px; width: 56px; height: 56px; border-radius: 18px; border: 0; background: var(--accent); color: var(--accent-ink); font: 500 30px/1 var(--body); box-shadow: 0 10px 22px -8px var(--accent); z-index: 3; }
+
+/* bars at the bottom of the app */
+.xfer { margin: 0 10px 8px; background: var(--ink); color: var(--bg); border-radius: 16px; padding: 10px 14px; border: 0; text-align: left; }
+.xfer .meter { background: color-mix(in srgb, var(--bg) 22%, transparent); border: 0; height: 4px; margin-top: 7px; }
+.xfer .meter i { background: var(--bg); }
+.tabs { display: grid; grid-template-columns: repeat(5, 1fr); background: var(--surface); border-top: 1px solid var(--line); padding: 4px 4px calc(6px + env(safe-area-inset-bottom)); }
+.tabs button { border: 0; background: none; padding: 8px 0 4px; font-size: 11.5px; font-weight: 600; color: var(--faint); border-radius: 12px; }
+.tabs button[aria-current="true"] { color: var(--accent); }
+.tabs svg { display: block; margin: 0 auto 2px; }
+
+/* bottom sheet + toast */
+.scrim { position: absolute; inset: 0; background: rgba(13,18,32,.45); z-index: 5; display: flex; align-items: flex-end; }
+.sheet { width: 100%; background: var(--surface); border-radius: 26px 26px 0 0; padding: 10px 16px 16px; max-height: 88%; overflow-y: auto; animation: up .22s cubic-bezier(.2,.8,.2,1); }
+.sheet::before { content: ""; display: block; width: 40px; height: 4px; border-radius: 2px; background: var(--line); margin: 0 auto 14px; }
+.sheet .act { display: flex; align-items: center; gap: 14px; width: 100%; border: 0; background: none; padding: 10px 4px; font-weight: 500; text-align: left; border-radius: 10px; }
+.sheet .act:hover { background: var(--sunk); }
+.sheet .act.danger { color: var(--bad); }
+@keyframes up { from { transform: translateY(40px); } }
+.toast { position: absolute; left: 16px; right: 16px; bottom: 140px; background: var(--ink); color: var(--bg); padding: 10px 14px; border-radius: 12px; font-weight: 500; z-index: 8; text-align: center; }
+@media (prefers-reduced-motion: reduce) { .sheet { animation: none; } .sw::after { transition: none; } }
+
+/* on a real phone the frame goes away */
+@media (max-width: 760px) {
+  .stage { display: block; padding: 0; height: 100%; }
+  .side { display: none; }
+  .frame { width: 100%; height: 100%; max-height: none; border: 0; border-radius: 0; padding: 0; box-shadow: none; }
+  .app { border-radius: 0; }
+}
+</style>
+</head>
+<body>
+<div class="stage">
+  <aside class="side">
+    <h1>Pocket Drive</h1>
+    <p class="soft">App mockup v2. Tap around the phone, or jump to a screen here. Sample data; nothing is saved.</p>
+    <nav id="jump" aria-label="Screens"></nav>
+    <button class="btn small" id="theme">Switch theme</button>
+  </aside>
+  <div class="frame">
+    <div class="app">
+      <main class="view" id="view" tabindex="-1"></main>
+      <button class="fab" id="fab" aria-label="Upload" hidden>+</button>
+      <button class="xfer" id="xfer" aria-label="Open activity"></button>
+      <nav class="tabs" id="tabs" aria-label="Main"></nav>
+      <div class="scrim" id="scrim" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+      <div class="toast" id="toast" hidden role="status"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const MB = 1024 ** 2, GB = 1024 ** 3;
+const size = (b) => b >= GB ? (b / GB).toFixed(1) + " GB" : b >= MB ? Math.round(b / MB) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB";
+const $ = (id) => document.getElementById(id);
+const TYPE = { pdf: "#d1344b", xlsx: "#17966b", jpg: "#8a4fd6", mp4: "#c97a00", zip: "#4a5578", txt: "#56607d", apk: "#3350e8" };
+const ext = (n) => n.split(".").pop().toLowerCase();
+const ico = (n, folder) => folder ? '<span class="ico folder"><svg width="20" height="20" viewBox="0 0 22 22" fill="currentColor"><path d="M2 6a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z"/></svg></span>' : `<span class="ico" style="background:${TYPE[ext(n)] || "#56607d"}">${ext(n).slice(0, 4)}</span>`;
+
+const TREE = {
+  shared: {
+    "": [["Documents", null, "12 items"], ["Photos", null, "1,204 items"], ["Car papers", null, "6 items"], ["lease-2026.pdf", 2.1 * MB, "Today 18:20"], ["budget.xlsx", 310 * 1024, "Yesterday"], ["flat-walkthrough.mp4", 148 * MB, "17 Nov"]],
+    "Documents": [["Taxes", null, "4 items"], ["report.xlsx", 88 * 1024, "Today 21:04"], ["passport-scan.pdf", 1.4 * MB, "3 Nov"], ["notes.txt", 4 * 1024, "28 Oct"]],
+    "Photos": [["Camera", null, "1,180 items"], ["IMG_20261120_1911.jpg", 4.2 * MB, "Today 19:11"], ["IMG_20261120_1908.jpg", 3.9 * MB, "Today 19:08"]],
+    "Car papers": [["insurance-2027.pdf", 640 * 1024, "9 Nov"], ["licence.jpg", 2.2 * MB, "9 Nov"]],
+  },
+  device: { "": [["Downloads backup", null, "31 items"], ["app-settings.zip", 12 * MB, "15 Nov"]], "Downloads backup": [["egx-analyzer-5.9.1.apk", 72 * MB, "18 Nov"]] },
+};
+const VAULT = [["passport-scan.pdf", 1.4 * MB, "3 Nov"], ["bank-statements-2026.zip", 22 * MB, "1 Nov"], ["recovery-codes.txt", 2 * 1024, "12 Oct"]];
+const S = { tab: "home", bucket: "shared", path: "", select: false, picked: new Set(), offline: new Set(["lease-2026.pdf", "insurance-2027.pdf", "budget.xlsx"]), act: "now", vaultOpen: false, conflict: true, pause: false };
+
+const ICON = {
+  home: '<path d="M3 10.5 11 4l8 6.5V19H3z"/>', files: '<path d="M3 6h6l2 2h8v10H3z"/>',
+  sync: '<path d="M4 9a7 7 0 0 1 12-3l2 2M18 13a7 7 0 0 1-12 3l-2-2M18 4v4h-4M4 18v-4h4"/>',
+  activity: '<path d="M3 11h4l2-6 4 12 2-6h4"/>', settings: '<circle cx="11" cy="11" r="3"/><path d="M11 2v3M11 17v3M2 11h3M17 11h3M4.6 4.6l2.1 2.1M15.3 15.3l2.1 2.1M4.6 17.4l2.1-2.1M15.3 6.7l2.1-2.1"/>',
+};
+const svg = (k, s = 22) => `<svg width="${s}" height="${s}" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
+const TABS = [["home", "Home"], ["files", "Files"], ["sync", "Sync"], ["activity", "Activity"], ["settings", "Settings"]];
+const JUMP = TABS.concat([["sheet", "File actions"], ["vault", "Vault"], ["setup", "First-time setup"]]);
+const sw = (label, on) => `<button class="sw" role="switch" aria-checked="${on}" aria-label="${label}"></button>`;
+let toastTimer;
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), 2200); }
+const fileRow = (name, bytes, when, extra = "") => `<button class="plain row" data-file="${name}">${ico(name)}<span class="grow"><span class="clip" style="display:block;font-weight:500">${name}</span><span class="soft small num">${size(bytes)} · ${when}</span></span>${extra}${S.offline.has(name) ? '<span class="badge ok">Offline</span>' : ""}</button>`;
+
+const V = {};
+V.home = () => `
+  <div class="stack" style="gap:16px">
+    <div><p class="soft small">Connected to pocket</p><h1>Everything is backed up.</h1></div>
+    ${S.conflict ? `<div class="note row"><span class="grow"><h3>report.xlsx changed in two places</h3><span class="small">Choose which copy to keep.</span></span><button class="btn small" data-go="sync">Decide</button></div>` : ""}
+    <div class="card stack" style="gap:8px">
+      <div class="row"><h3 class="grow">Your space</h3><span class="num soft">3.1 GB of 10 GB</span></div>
+      <div class="meter"><i style="width:31%"></i></div>
+      <span class="soft small">Photos 2.2 GB · Documents 0.6 GB · Other 0.3 GB</span>
+    </div>
+    <button class="plain card row" data-go="sync"><span class="ico" style="background:#8a4fd6">${svg("sync", 18)}</span><span class="grow"><h3>Camera backup</h3><span class="soft small">212 photos today · up to date</span></span><span class="faint">›</span></button>
+    <div><h2>Kept offline</h2>
+      <div class="chips">${[...S.offline].map((n) => `<button class="chip" data-file="${n}">${ico(n)}<span class="clip" style="display:block;margin-top:10px;font-weight:500">${n}</span><span class="soft small">On this phone</span></button>`).join("") || '<p class="soft">No files are kept offline yet.</p>'}</div>
+    </div>
+    <div class="card"><h2>Recent</h2>
+      <div class="list">${[["report.xlsx", 88 * 1024, "Today 21:04"], ["IMG_20261120_1911.jpg", 4.2 * MB, "Today 19:11"], ["lease-2026.pdf", 2.1 * MB, "Today 18:20"]].map((f) => fileRow(...f)).join("")}</div>
+    </div>
+    <button class="plain card row" data-go="vault"><span class="ico" style="background:var(--ink);color:var(--bg)">🔒</span><span class="grow"><h3>Vault</h3><span class="soft small">3 files, encrypted before they leave this phone</span></span><span class="faint">›</span></button>
+  </div>`;
+
+V.files = () => {
+  const items = (TREE[S.bucket][S.path] || []);
+  const parts = S.path ? S.path.split("/") : [];
+  return `
+  <div class="stack" style="gap:14px">
+    <div class="row"><h1 class="grow">${parts.at(-1) || "Files"}</h1><button class="btn small" id="select">${S.select ? "Done" : "Select"}</button></div>
+    <input class="search" type="search" placeholder="Search the whole drive" aria-label="Search the whole drive">
+    <div class="seg" role="group" aria-label="Space"><button data-bucket="shared" aria-pressed="${S.bucket === "shared"}">My Drive</button><button data-bucket="device" aria-pressed="${S.bucket === "device"}">This device</button></div>
+    <div class="row small"><span class="grow soft">${S.path ? `<button class="plain" data-up style="width:auto;color:var(--accent);font-weight:600">‹ Back</button> · ${parts.join(" / ")}` : S.bucket === "shared" ? "Shared by all your devices" : "Only this phone sees these"}</span><button class="btn small" data-toast="Sort by name, date or size">Name ↓</button></div>
+    <div class="card"><div class="list">
+      ${items.map(([n, b, w]) => b === null
+        ? `<button class="plain row" data-open="${n}">${ico(n, true)}<span class="grow"><span style="display:block;font-weight:500">${n}</span><span class="soft small">${w}</span></span><span class="faint">›</span></button>`
+        : S.select ? `<label class="row"><input type="checkbox" data-pick="${n}" ${S.picked.has(n) ? "checked" : ""} style="width:20px;height:20px;accent-color:var(--accent)">${ico(n)}<span class="grow"><span class="clip" style="display:block;font-weight:500">${n}</span><span class="soft small">${size(b)} · ${w}</span></span></label>` : fileRow(n, b, w)).join("") || '<p class="soft">This folder is empty. Tap + to add files.</p>'}
+    </div></div>
+    ${S.select ? `<div class="row"><button class="btn grow" data-toast="${S.picked.size} files would download">Download</button><button class="btn grow" data-toast="${S.picked.size} files would move">Move</button><button class="btn grow" style="color:var(--bad)" data-toast="${S.picked.size} files would be deleted; undo for 14 days">Delete</button></div>` : ""}
+  </div>`;
+};
+
+V.sync = () => {
+  const pair = (name, from, state, badge, on) => `<div class="row"><span class="grow"><h3>${name}</h3><span class="soft small">${from}</span><br><span class="small">${state}</span></span>${badge}${sw(name, on)}</div>`;
+  return `
+  <div class="stack" style="gap:14px">
+    <div class="row"><h1 class="grow">Sync</h1><button class="btn small primary" data-toast="Checking every folder now">Sync now</button></div>
+    ${S.conflict ? `<div class="note stack" style="gap:10px"><div><h3>report.xlsx changed in two places</h3><span class="small">This phone: today 21:04 · Desktop PC: today 20:51</span></div>
+      <div class="row"><button class="btn small grow" data-resolve="This phone's copy was kept">Keep phone's</button><button class="btn small grow" data-resolve="The PC's copy was kept">Keep PC's</button><button class="btn small grow" data-resolve="Both copies were kept">Keep both</button></div></div>` : ""}
+    <div class="card"><h2>Folders</h2><div class="list">
+      ${pair("Camera backup", "Phone camera → Photos/Camera", "Up to date · 212 photos today", "", true)}
+      ${pair("Documents", "Documents ↔ Documents, both ways", S.conflict ? "1 file needs a decision" : "Up to date", S.conflict ? '<span class="badge warn">1</span>' : "", true)}
+      ${pair("WhatsApp media", "WhatsApp → Photos/WhatsApp", "Waiting for Wi-Fi · 38 files", "", true)}
+      ${pair("Private papers", "Scans → Vault, encrypted", "Paused", "", false)}
+    </div></div>
+    <button class="btn wide" data-toast="Pick a folder on the phone, then where it goes">Add a folder</button>
+    <div class="card"><h2>Rules</h2><div class="list">
+      <div class="row"><span class="grow"><h3>Only on Wi-Fi</h3><span class="soft small">Mobile data is never used for sync</span></span>${sw("Only on Wi-Fi", true)}</div>
+      <div class="row"><span class="grow"><h3>Only while charging</h3><span class="soft small">For large first backups</span></span>${sw("Only while charging", false)}</div>
+      <div class="row"><span class="grow"><h3>Stop if many files vanish</h3><span class="soft small">Asks before deleting more than 50 files</span></span>${sw("Stop if many files vanish", true)}</div>
+    </div></div>
+  </div>`;
+};
+
+V.activity = () => {
+  const bodies = {
+    now: `<div class="card"><div class="list">
+        <div class="stack" style="gap:6px"><div class="row">${ico("flat-walkthrough.mp4")}<span class="grow"><span class="clip" style="display:block;font-weight:500">flat-walkthrough.mp4</span><span class="soft small num">Uploading · 96 of 148 MB · 4.6 MB/s</span></span><button class="btn small" data-toast="Upload paused">Pause</button></div><div class="meter"><i style="width:65%"></i></div></div>
+        <div class="stack" style="gap:6px"><div class="row">${ico("bank.zip")}<span class="grow"><span class="clip" style="display:block;font-weight:500">bank-statements-2026.zip</span><span class="soft small">Downloading · waiting its turn</span></span></div><div class="meter"><i style="width:0"></i></div></div>
+      </div></div><p class="soft small">38 WhatsApp files are waiting for Wi-Fi.</p>`,
+    failed: `<div class="card"><div class="list">
+        <div class="row">${ico("scan.pdf")}<span class="grow"><span class="clip" style="display:block;font-weight:500">car-service-scan.pdf</span><span class="small" style="color:var(--bad)">Not uploaded: the phone could not reach pocket</span></span><button class="btn small" data-toast="Trying car-service-scan.pdf again">Retry</button></div>
+      </div></div><p class="soft small">Failed transfers stay here until you retry or dismiss them.</p>`,
+    log: `<div class="card"><div class="list small">
+        ${[["21:04", "Documents", "report.xlsx changed in two places"], ["19:12", "Camera backup", "212 photos uploaded"], ["18:20", "You", "Uploaded lease-2026.pdf"], ["03:10", "Documents", "Checked 64 files, nothing to do"], ["Yesterday", "Camera backup", "97 photos uploaded"]].map(([t, w, m]) => `<div class="row"><span class="mono faint" style="width:66px">${t}</span><span class="grow"><b style="font-weight:600">${w}</b><br><span class="soft">${m}</span></span></div>`).join("")}
+      </div></div>`,
+  };
+  return `
+  <div class="stack" style="gap:14px">
+    <h1>Activity</h1>
+    <div class="seg" role="group" aria-label="Show"><button data-act="now" aria-pressed="${S.act === "now"}">Now · 2</button><button data-act="failed" aria-pressed="${S.act === "failed"}">Failed · 1</button><button data-act="log" aria-pressed="${S.act === "log"}">Log</button></div>
+    ${bodies[S.act]}
+  </div>`;
+};
+
+V.vault = () => S.vaultOpen ? `
+  <div class="stack" style="gap:14px">
+    <div class="row"><h1 class="grow">Vault</h1><button class="btn small" id="lock">Lock now</button></div>
+    <p class="soft">These files are encrypted on this phone. The server only ever stores scrambled data and scrambled names.</p>
+    <div class="card"><div class="list">${VAULT.map((f) => fileRow(...f, '<span class="badge">🔒</span>')).join("")}</div></div>
+    <p class="soft small">Locks by itself after 5 minutes.</p>
+  </div>` : `
+  <div class="stack" style="gap:16px;text-align:center;padding-top:60px">
+    <div style="font-size:54px">🔒</div>
+    <h1>The Vault is locked</h1>
+    <p class="soft">3 files · 23 MB. Nothing here can be read without the Vault password, not even on the server.</p>
+    <button class="btn primary wide" id="unlock">Unlock with fingerprint</button>
+    <button class="btn wide" data-toast="The password box would open here">Use the Vault password</button>
+  </div>`;
+
+V.settings = () => `
+  <div class="stack" style="gap:14px">
+    <h1>Settings</h1>
+    <div class="card"><h2>Connection</h2><div class="list">
+      <div class="row"><span class="grow"><h3>pocket</h3><span class="soft small mono">http://pocket:9000</span></span><span class="badge ok">Connected</span></div>
+      <div class="row"><span class="grow"><h3>This device</h3><span class="soft small">Galaxy Z Fold 7 · over Tailscale</span></span><button class="btn small" data-toast="The device name would be edited here">Rename</button></div>
+      <div class="row"><span class="grow"><h3>Use home Wi-Fi when possible</h3><span class="soft small">Faster than Tailscale at home</span></span>${sw("Use home Wi-Fi when possible", false)}</div>
+    </div></div>
+    <div class="card stack" style="gap:8px"><h2 style="margin:0">Space</h2><div class="meter"><i style="width:31%"></i></div><span class="soft small num">3.1 GB of 10 GB used · 6.9 GB free for this device</span></div>
+    <div class="card"><h2>Permissions</h2><div class="list">
+      <div class="row"><span class="grow"><h3>Photos and videos</h3><span class="soft small">Needed for camera backup</span></span><span class="badge ok">Allowed</span></div>
+      <div class="row"><span class="grow"><h3>All files</h3><span class="soft small">Only needed to sync folders that are not media</span></span><button class="btn small" data-toast="Android's permission screen would open">Allow</button></div>
+      <div class="row"><span class="grow"><h3>Notifications</h3><span class="soft small">Failed transfers and conflicts</span></span><span class="badge ok">Allowed</span></div>
+    </div></div>
+    <div class="card"><h2>About</h2><div class="list">
+      <div class="row"><span class="grow"><h3>Pocket Drive 0.2.0</h3><span class="soft small">Checked for updates today</span></span><button class="btn small" data-toast="You have the newest version">Check</button></div>
+      <div class="row"><span class="grow"><h3>First-time setup</h3><span class="soft small">Connect to a different Pocket Cloud</span></span><button class="btn small" data-go="setup">Open</button></div>
+    </div></div>
+  </div>`;
+
+V.setup = () => `
+  <div class="stack" style="gap:16px;padding-top:26px">
+    <div><h1>Connect to your Pocket Cloud</h1><p class="soft" style="margin-top:6px">Open the control panel on your PC, go to Settings, and show the QR code.</p></div>
+    <button class="plain" data-toast="The camera would open here" style="aspect-ratio:1;border:2px dashed var(--line);border-radius:26px;display:grid;place-items:center;text-align:center;background:var(--surface)">
+      <span><span style="font-size:40px;display:block">▣</span><b>Scan the QR code</b><br><span class="soft small">Tap to open the camera</span></span>
+    </button>
+    <p class="soft small" style="text-align:center">or type it in</p>
+    <input class="search" placeholder="Address, for example pocket:9000" aria-label="Address">
+    <button class="btn primary wide" data-go="home">Connect</button>
+    <p class="soft small">Tailscale must be on. This phone gets its own key, which works only from this phone.</p>
+  </div>`;
+
+function openSheet(name) {
+  const off = S.offline.has(name);
+  const act = (label, msg, cls = "") => `<button class="act ${cls}" data-sheet="${msg}">${label}</button>`;
+  $("sheet").innerHTML = `
+    <div class="row" style="margin-bottom:8px">${ico(name)}<span class="grow"><h3 class="clip">${name}</h3><span class="soft small">My Drive</span></span></div>
+    ${act("Open", `${name} would open in the viewer`)}
+    ${act("Download to this phone", `${name} would download`)}
+    <button class="act" data-offline="${name}">${off ? "Remove from this phone" : "Keep offline"}<span class="grow"></span><span class="sw" aria-checked="${off}" aria-hidden="true"></span></button>
+    ${act("Share a link", "Link copied; it stops working in 7 days")}
+    ${act("Rename", "The name would be edited here")}
+    ${act("Move", "Pick a folder to move it to")}
+    ${act("Earlier versions", "3 earlier versions from the last 14 days")}
+    ${act("Move into the Vault", `${name} would be encrypted and moved`)}
+    ${act("Delete", `${name} deleted; undo for 14 days`, "danger")}`;
+  $("scrim").hidden = false;
+}
+const closeSheet = () => ($("scrim").hidden = true);
+
+function render() {
+  const screen = V[S.tab] ? S.tab : "home";
+  $("view").innerHTML = V[screen]();
+  $("view").scrollTop = 0;
+  const main = TABS.some(([k]) => k === screen);
+  $("tabs").hidden = screen === "setup";
+  $("xfer").hidden = screen === "setup" || screen === "activity";
+  $("fab").hidden = screen !== "files" || S.select;
+  $("fab").style.bottom = "132px";
+  $("xfer").innerHTML = `<div class="row"><span class="grow clip" style="font-weight:600">Uploading flat-walkthrough.mp4</span><span class="num small">65%</span></div><div class="meter"><i style="width:65%"></i></div>`;
+  $("tabs").innerHTML = TABS.map(([k, l]) => `<button data-go="${k}" aria-current="${k === screen || (!main && k === "home" && screen === "vault")}">${svg(k)}${l}</button>`).join("");
+  $("jump").innerHTML = JUMP.map(([k, l]) => `<button data-go="${k}" aria-current="${k === screen}">${l}</button>`).join("");
+}
+function go(to) {
+  closeSheet();
+  if (to === "sheet") { S.tab = "files"; S.bucket = "shared"; S.path = ""; S.select = false; render(); openSheet("lease-2026.pdf"); return; }
+  S.tab = to; render();
+}
+
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("button, .scrim, label");
+  if (!t) return;
+  const d = t.dataset || {};
+  if (t.id === "scrim") { if (e.target === t) closeSheet(); }
+  else if (t.id === "theme") {
+    const dark = document.documentElement.dataset.theme ? document.documentElement.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.dataset.theme = dark ? "light" : "dark";
+  }
+  else if (t.id === "xfer") go("activity");
+  else if (t.id === "fab") toast("Pick photos or files to upload");
+  else if (t.id === "select") { S.select = !S.select; S.picked.clear(); render(); }
+  else if (t.id === "unlock") { S.vaultOpen = true; render(); }
+  else if (t.id === "lock") { S.vaultOpen = false; render(); }
+  else if (d.go) go(d.go);
+  else if (d.bucket) { S.bucket = d.bucket; S.path = ""; render(); }
+  else if (d.open) { S.path = S.path ? S.path + "/" + d.open : d.open; if (!TREE[S.bucket][S.path]) TREE[S.bucket][S.path] = []; render(); }
+  else if ("up" in d) { S.path = S.path.split("/").slice(0, -1).join("/"); render(); }
+  else if (d.act) { S.act = d.act; render(); }
+  else if (d.resolve) { S.conflict = false; render(); toast(d.resolve); }
+  else if (d.offline) { S.offline.has(d.offline) ? S.offline.delete(d.offline) : S.offline.add(d.offline); const on = S.offline.has(d.offline); closeSheet(); render(); toast(on ? "Kept on this phone" : "Removed from this phone"); }
+  else if (d.sheet) { closeSheet(); toast(d.sheet); }
+  else if (d.file) openSheet(d.file);
+  else if (t.classList.contains("sw")) t.setAttribute("aria-checked", t.getAttribute("aria-checked") !== "true");
+  else if (d.toast) toast(d.toast);
+});
+document.addEventListener("change", (e) => {
+  const p = e.target.dataset.pick;
+  if (p) { e.target.checked ? S.picked.add(p) : S.picked.delete(p); render(); }
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSheet(); });
+render();
+</script>
+</body>
+</html>

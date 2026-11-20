@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pocket Cloud — panel mockup v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #e9edf5; --surface: #ffffff; --sunk: #f3f5fa; --line: #d5dbe8;
+  --ink: #18203a; --soft: #56607d; --faint: #8a93ab;
+  --accent: #3350e8; --accent-ink: #ffffff; --accent-wash: #e3e8ff;
+  --ok: #17966b; --warn: #c97a00; --warn-wash: #fff1d6; --bad: #d1344b;
+  --shadow: 0 1px 2px rgba(24,32,58,.06), 0 8px 24px -12px rgba(24,32,58,.18);
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", Consolas, ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0d1220; --surface: #161d31; --sunk: #111728; --line: #29324c;
+  --ink: #e8ecf8; --soft: #a3adc8; --faint: #6f7a98;
+  --accent: #8198ff; --accent-ink: #0d1220; --accent-wash: #1f2a52;
+  --ok: #4cd0a0; --warn: #f1b445; --warn-wash: #3a2e12; --bad: #ff7388;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 28px -14px rgba(0,0,0,.6);
+} }
+:root[data-theme="dark"] {
+  --bg: #0d1220; --surface: #161d31; --sunk: #111728; --line: #29324c;
+  --ink: #e8ecf8; --soft: #a3adc8; --faint: #6f7a98;
+  --accent: #8198ff; --accent-ink: #0d1220; --accent-wash: #1f2a52;
+  --ok: #4cd0a0; --warn: #f1b445; --warn-wash: #3a2e12; --bad: #ff7388;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 28px -14px rgba(0,0,0,.6);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--body); -webkit-font-smoothing: antialiased; }
+button, input, select { font: inherit; color: inherit; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+code, .mono { font-family: var(--mono); font-size: 12.5px; }
+h1 { font: 700 34px/1.1 var(--display); letter-spacing: -.02em; margin: 0 0 6px; }
+h2 { font: 700 19px/1.2 var(--display); letter-spacing: -.01em; margin: 0 0 12px; }
+h3 { font: 600 15px/1.3 var(--body); margin: 0; }
+p { margin: 0; }
+.lede { color: var(--soft); max-width: 62ch; margin-bottom: 26px; }
+.soft { color: var(--soft); } .faint { color: var(--faint); } .num { font-variant-numeric: tabular-nums; }
+
+/* shell */
+.shell { display: grid; grid-template-columns: 228px minmax(0, 1fr); min-height: 100vh; }
+.rail { position: sticky; top: 0; height: 100vh; padding: 22px 14px; display: flex; flex-direction: column; gap: 4px; border-right: 1px solid var(--line); }
+.brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px 20px; font: 700 20px var(--display); letter-spacing: -.02em; }
+.brand svg { flex: none; }
+.rail a.nav { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; color: var(--soft); font-weight: 500; }
+.rail a.nav:hover { background: var(--surface); color: var(--ink); text-decoration: none; }
+.rail a.nav.on { background: var(--ink); color: var(--bg); }
+.rail a.nav .badge { margin-left: auto; }
+.rail .foot { margin-top: auto; padding: 10px; font-size: 13px; color: var(--faint); display: grid; gap: 8px; }
+main { padding: 34px clamp(16px, 4vw, 48px) 80px; max-width: 1180px; width: 100%; }
+.tabs { display: none; }
+
+/* pieces */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; box-shadow: var(--shadow); min-width: 0; }
+.grid { display: grid; gap: 16px; }
+.g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.row { display: flex; align-items: center; gap: 12px; }
+.between { justify-content: space-between; }
+.wrap { flex-wrap: wrap; }
+.stack { display: grid; gap: 10px; }
+.btn { border: 1px solid var(--line); background: var(--surface); padding: 8px 14px; border-radius: 10px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+.btn:hover { border-color: var(--ink); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.small { padding: 4px 10px; font-size: 13px; border-radius: 8px; }
+.btn.danger { color: var(--bad); }
+.badge { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--sunk); color: var(--soft); border: 1px solid var(--line); white-space: nowrap; }
+.badge.warn { background: var(--warn-wash); color: var(--warn); border-color: transparent; }
+.badge.ok { color: var(--ok); }
+.badge.plan { background: transparent; border-style: dashed; color: var(--faint); }
+.badge.use { background: var(--accent-wash); color: var(--accent); border-color: transparent; }
+.meter { height: 8px; border-radius: 999px; background: var(--sunk); overflow: hidden; border: 1px solid var(--line); }
+.meter i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.meter i.warn { background: var(--warn); }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ok); flex: none; }
+.dot.warn { background: var(--warn); } .dot.off { background: var(--faint); }
+.mark { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; font: 700 15px var(--display); color: #fff; flex: none; }
+.list > * { padding: 12px 0; border-top: 1px solid var(--line); }
+.list > *:first-child { border-top: 0; padding-top: 0; }
+.list > *:last-child { padding-bottom: 0; }
+.kv { display: grid; grid-template-columns: minmax(120px, 34%) 1fr; gap: 6px 16px; align-items: center; }
+.kv > :nth-child(odd) { color: var(--soft); }
+pre { margin: 0; background: var(--sunk); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; overflow-x: auto; font: 12.5px/1.6 var(--mono); }
+.crumb { font-size: 13px; color: var(--soft); margin-bottom: 10px; }
+.sw { position: relative; width: 40px; height: 23px; border-radius: 999px; background: var(--line); border: 0; cursor: pointer; flex: none; }
+.sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 17px; height: 17px; border-radius: 50%; background: var(--surface); transition: left .15s; }
+.sw[aria-checked="true"] { background: var(--accent); }
+.sw[aria-checked="true"]::after { left: 20px; }
+.chip { border: 1px solid var(--line); background: var(--surface); padding: 8px 14px; border-radius: 12px; cursor: pointer; font-weight: 500; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.seg { display: inline-flex; background: var(--sunk); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
+.seg button { border: 0; background: none; padding: 5px 12px; border-radius: 7px; cursor: pointer; color: var(--soft); font-weight: 500; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.file { display: grid; grid-template-columns: minmax(0, 1fr) 90px 130px auto; gap: 12px; align-items: center; }
+.file .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.appcard { display: grid; gap: 14px; color: inherit; }
+.appcard:hover { text-decoration: none; border-color: var(--ink); }
+.toast { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-weight: 500; box-shadow: var(--shadow); z-index: 20; max-width: calc(100vw - 32px); }
+.note { background: var(--warn-wash); color: var(--ink); border-radius: 12px; padding: 12px 14px; font-size: 14px; }
+[hidden] { display: none !important; }
+
+/* the phone: signature of the home screen */
+.hero { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 28px; align-items: center; margin-bottom: 18px; }
+.device { position: relative; width: 250px; height: 300px; }
+.device svg { width: 100%; height: 100%; display: block; }
+.level { transition: height .9s cubic-bezier(.2,.8,.2,1), y .9s cubic-bezier(.2,.8,.2,1); }
+@media (prefers-reduced-motion: reduce) { .level, .sw::after { transition: none; } }
+
+@media (max-width: 860px) {
+  .shell { grid-template-columns: 1fr; }
+  .rail { display: none; }
+  main { padding: 22px 16px 96px; }
+  h1 { font-size: 28px; }
+  .g2, .g3 { grid-template-columns: 1fr; }
+  .hero { grid-template-columns: 1fr; justify-items: center; text-align: center; gap: 8px; }
+  .hero .kv { text-align: left; }
+  .tabs { display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0; background: var(--surface); border-top: 1px solid var(--line); z-index: 10; padding-bottom: env(safe-area-inset-bottom); }
+  .tabs a { padding: 10px 2px 9px; text-align: center; font-size: 11.5px; font-weight: 600; color: var(--faint); }
+  .tabs a.on { color: var(--accent); }
+  .tabs a:hover { text-decoration: none; }
+  .tabs svg { display: block; margin: 0 auto 2px; }
+  .file { grid-template-columns: minmax(0, 1fr) auto; }
+  .file .size, .file .when { display: none; }
+  .kv { grid-template-columns: 1fr; gap: 2px 0; }
+  .kv > :nth-child(even) { margin-bottom: 10px; }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="rail" aria-label="Main">
+    <div class="brand">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="6" y="1.5" width="14" height="23" rx="3.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="9" y="13" width="8" height="8.5" rx="1.2" fill="var(--accent)"/></svg>
+      Pocket Cloud
+    </div>
+    <div id="rail-links"></div>
+    <div class="foot">
+      <div class="row"><span class="dot"></span><span>pocket · awake 38 days</span></div>
+      <button class="btn small" id="theme">Switch theme</button>
+      <span>Mockup v2 — sample data, nothing is saved</span>
+    </div>
+  </nav>
+  <main id="view" tabindex="-1"></main>
+</div>
+<nav class="tabs" id="tabs" aria-label="Main"></nav>
+<div class="toast" id="toast" hidden role="status"></div>
+
+<script>
+const GB = 1024 ** 3, MB = 1024 ** 2;
+const size = (b) => b >= GB ? (b / GB).toFixed(b >= 10 * GB ? 0 : 1) + " GB" : b >= MB ? Math.round(b / MB) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB";
+const USES = { sync: "Sync", backup: "Backup", updates: "Updates", notify: "Notifications", share: "Share links" };
+
+const PHONE = { name: "pocket", model: "Galaxy Note 9", address: "100.82.2.29", intUsed: 6.2 * GB, intTotal: 14 * GB, sdUsed: 9.4 * GB, sdTotal: 28 * GB };
+const APPS = [
+  { id: "signal-lab-egx", name: "Signal Lab EGX", color: "#0f8f7a", kind: "Android", uses: ["backup", "sync"], used: 41 * MB, alloc: 2 * GB,
+    devices: [["Galaxy Z Fold 7", "12 min ago"], ["Galaxy Tab", "yesterday"]], last: "Ledger backed up 12 min ago",
+    keeps: "The call ledger and your hand-entered dividends", share: null },
+  { id: "egx-analyzer", name: "EGX Analyzer", color: "#3350e8", kind: "Android", uses: ["sync", "backup", "updates"], used: 310 * MB, alloc: 3 * GB,
+    devices: [["Galaxy Z Fold 7", "3 min ago"], ["Galaxy Tab", "2 h ago"]], last: "14 reports synced today",
+    keeps: "Reports, rules, positions and a weekly backup", share: "egx-prices" },
+  { id: "signal-lab", name: "Signal Lab", color: "#8a4fd6", kind: "Android + PC", uses: ["sync"], used: 468 * MB, alloc: 3 * GB,
+    devices: [["Galaxy Z Fold 7", "1 h ago"], ["kabash-g16", "today 09:14"]], last: "Research data refreshed this morning",
+    keeps: "The paper ledger and the research price history", share: null },
+  { id: "racewall", name: "RaceWall", color: "#d1344b", kind: "Desktop + tablet", uses: ["sync", "updates"], used: 1.9 * GB, alloc: 6 * GB,
+    devices: [["kabash-g16", "Sunday"], ["Galaxy Tab", "Sunday"]], last: "Race recording shared to the tablet on Sunday",
+    keeps: "Session recordings, layouts and the installer feed", share: null },
+  { id: "village", name: "Village", color: "#c97a00", kind: "PC", uses: ["backup", "notify"], used: 620 * MB, alloc: 4 * GB,
+    devices: [["kabash-g16", "22:52"]], last: "station.db backed up at 22:52", warn: "At 86% of its space by next week at this rate",
+    keeps: "Nightly copies of station.db", share: null },
+  { id: "modelgen", name: "ModelGen", color: "#4a5578", kind: "PC", uses: ["share"], used: 2.4 * GB, alloc: 5 * GB,
+    devices: [["kabash-g16", "today 21:37"]], last: "3 finished models shared to your phone",
+    keeps: "Finished models you chose to keep", share: null },
+];
+const FEED = [
+  ["22:52", "village", "Backed up station.db (82 MB)"], ["22:41", "egx-analyzer", "Fold 7 synced 3 reports"],
+  ["22:40", "signal-lab-egx", "Evening ledger backed up"], ["21:37", "modelgen", "Shared mech-arm-v4.glb"],
+  ["19:05", "egx-analyzer", "Tab picked up 11 reports"], ["09:14", "signal-lab", "PC refreshed 699 price files"],
+];
+const FILES = {
+  "signal-lab-egx": [["backups/egx-ledger-2026-11-20.db", 6.1 * MB, "Today 22:40"], ["backups/egx-ledger-2026-11-19.db", 6.0 * MB, "Yesterday"], ["dividends.json", 14 * 1024, "18 Nov"], ["settings.json", 3 * 1024, "18 Nov"]],
+  "egx-analyzer": [["sync/reports/2026-11-20-a41c.json", 22 * 1024, "Today 22:41"], ["sync/rules/rule-17.json", 2 * 1024, "Today 19:05"], ["backups/egx-backup-2026-11-17.zip", 48 * MB, "17 Nov"], ["releases/egx-analyzer-5.9.1-arm64.apk", 72 * MB, "18 Nov"]],
+  "signal-lab": [["ledger/fold7.json", 310 * 1024, "Today 21:50"], ["research/d1/BTCUSDT.csv", 1.2 * MB, "Today 09:14"], ["research/d1/ETHUSDT.csv", 1.1 * MB, "Today 09:14"], ["research/funding/BTCUSDT.csv", 220 * 1024, "Today 09:14"]],
+  "village": [["backups/station-2026-11-20.db", 82 * MB, "Today 22:52"], ["backups/station-2026-11-19.db", 81 * MB, "Yesterday"], ["backups/station-2026-11-18.db", 79 * MB, "18 Nov"], ["backups/tower-2026-11-20.db", 6 * MB, "Today 22:52"]],
+  "modelgen": [["models/mech-arm-v4.glb", 38 * MB, "Today 21:37"], ["models/desk-lamp-v2.glb", 21 * MB, "Today 20:12"], ["models/gearbox-v7.stl", 54 * MB, "19 Nov"], ["models/gearbox-v7.png", 2 * MB, "19 Nov"]],
+  "racewall": [["recordings/2026-abu-dhabi-race/recording.json", 9 * 1024, "Sunday"], ["recordings/2026-abu-dhabi-race/timing.bin", 31 * MB, "Sunday"], ["layouts.json", 8 * 1024, "11 Nov"], ["releases/latest.yml", 1024, "8 Nov"]],
+};
+const NAV = [["home", "Home"], ["apps", "Apps"], ["files", "Files"], ["phone", "Phone"], ["settings", "Settings"]];
+const ICON = {
+  home: '<path d="M3 10.5 11 4l8 6.5V19H3z"/>', apps: '<rect x="3" y="3" width="7" height="7" rx="2"/><rect x="12" y="3" width="7" height="7" rx="2"/><rect x="3" y="12" width="7" height="7" rx="2"/><rect x="12" y="12" width="7" height="7" rx="2"/>',
+  files: '<path d="M3 6h6l2 2h8v10H3z"/>', phone: '<rect x="6" y="2" width="10" height="18" rx="2.5"/><path d="M10 17h2"/>', settings: '<circle cx="11" cy="11" r="3"/><path d="M11 2v3M11 17v3M2 11h3M17 11h3M4.6 4.6l2.1 2.1M15.3 15.3l2.1 2.1M4.6 17.4l2.1-2.1M15.3 6.7l2.1-2.1"/>',
+};
+const icon = (k) => `<svg width="20" height="20" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
+const $ = (id) => document.getElementById(id);
+const app = (id) => APPS.find((a) => a.id === id);
+const mark = (a) => `<span class="mark" style="background:${a.color}">${a.name.split(" ").map((w) => w[0]).join("").slice(0, 2)}</span>`;
+const meter = (used, total, warn) => `<div class="meter" role="img" aria-label="${Math.round(used / total * 100)}% used"><i class="${warn ? "warn" : ""}" style="width:${Math.max(2, used / total * 100)}%"></i></div>`;
+const uses = (a) => a.uses.map((u) => `<span class="badge use">${USES[u]}</span>`).join(" ");
+const planned = '<span class="badge plan" title="Not in the server yet">Planned</span>';
+let toastTimer;
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), 2400); }
+
+/* ---------- screens ---------- */
+const SCREENS = {};
+
+SCREENS.home = () => {
+  const used = PHONE.intUsed + PHONE.sdUsed, total = PHONE.intTotal + PHONE.sdTotal;
+  const H = 196, ih = H * PHONE.intUsed / PHONE.intTotal, sh = 74 * PHONE.sdUsed / PHONE.sdTotal;
+  const need = APPS.filter((a) => a.warn);
+  return `
+  <div class="hero">
+    <div class="device">
+      <svg viewBox="0 0 250 300" role="img" aria-label="The phone: internal storage ${Math.round(PHONE.intUsed / PHONE.intTotal * 100)}% full, SD card ${Math.round(PHONE.sdUsed / PHONE.sdTotal * 100)}% full">
+        <rect x="30" y="14" width="128" height="272" rx="22" fill="var(--surface)" stroke="var(--ink)" stroke-width="3"/>
+        <clipPath id="scr"><rect x="42" y="50" width="104" height="${H}" rx="8"/></clipPath>
+        <rect x="42" y="50" width="104" height="${H}" rx="8" fill="var(--sunk)"/>
+        <rect class="level" data-h="${ih}" data-y="${50 + H - ih}" x="42" y="${50 + H}" width="104" height="0" fill="var(--accent)" clip-path="url(#scr)"/>
+        <circle cx="94" cy="32" r="3.5" fill="var(--ink)"/>
+        <rect x="76" y="262" width="36" height="5" rx="2.5" fill="var(--line)"/>
+        <path d="M176 196h44l10 12v70a6 6 0 0 1-6 6h-48a6 6 0 0 1-6-6v-76a6 6 0 0 1 6-6z" fill="var(--surface)" stroke="var(--ink)" stroke-width="3"/>
+        <clipPath id="sd"><rect x="178" y="208" width="44" height="74" rx="3"/></clipPath>
+        <rect x="178" y="208" width="44" height="74" rx="3" fill="var(--sunk)"/>
+        <rect class="level" data-h="${sh}" data-y="${208 + 74 - sh}" x="178" y="282" width="44" height="0" fill="var(--warn)" clip-path="url(#sd)"/>
+        <text x="94" y="${50 + H - ih - 8}" text-anchor="middle" font-family="var(--mono)" font-size="11" fill="var(--soft)">${size(PHONE.intUsed)} / ${size(PHONE.intTotal)}</text>
+        <text x="200" y="188" text-anchor="middle" font-family="var(--mono)" font-size="11" fill="var(--soft)">SD ${size(PHONE.sdUsed)}</text>
+      </svg>
+    </div>
+    <div>
+      <h1>Your pocket is holding ${size(used)} for ${APPS.length} apps.</h1>
+      <p class="lede" style="margin-bottom:16px">${size(total - used)} still free across the phone and its SD card. Everything was backed up to the card last night.</p>
+      <div class="kv">
+        <span>Reachable at</span><span class="mono">http://pocket:9000</span>
+        <span>Last nightly copy</span><span>Today 03:00, 41 s</span>
+        <span>Phone</span><span>${PHONE.model}, 31 °C, charging</span>
+      </div>
+    </div>
+  </div>
+  <div class="grid g2">
+    <section class="card">
+      <h2>Needs you</h2>
+      <div class="list">
+        ${need.map((a) => `<div class="row">${mark(a)}<div style="flex:1"><h3>${a.name}</h3><p class="soft">${a.warn}</p></div><a class="btn small" href="#app/${a.id}">Open</a></div>`).join("")}
+        <div class="row"><span class="mark" style="background:var(--faint)">SD</span><div style="flex:1"><h3>Card 1 is still remembered</h3><p class="soft">You swapped it out in October. Forget it, or put it back to read its files.</p></div><a class="btn small" href="#phone">Open</a></div>
+      </div>
+    </section>
+    <section class="card">
+      <div class="row between"><h2>Today</h2><a href="#apps" style="margin-bottom:12px">All apps</a></div>
+      <div class="list">
+        ${FEED.map(([t, id, text]) => `<a class="row" href="#app/${id}" style="color:inherit"><span class="mono faint" style="width:44px">${t}</span><span class="dot" style="background:${app(id).color}"></span><span style="flex:1">${text}</span><span class="soft">${app(id).name}</span></a>`).join("")}
+      </div>
+    </section>
+  </div>`;
+};
+
+SCREENS.apps = () => `
+  <div class="row between wrap" style="margin-bottom:6px"><h1>Apps</h1><a class="btn primary" href="#connect">Connect a project</a></div>
+  <p class="lede">Each of your projects gets its own space on the phone. A project shows up here the first time it connects.</p>
+  <div class="grid g3">
+    ${APPS.map((a) => `<a class="card appcard" href="#app/${a.id}">
+      <div class="row">${mark(a)}<div style="min-width:0"><h3>${a.name}</h3><span class="soft" style="font-size:13px">${a.kind} · ${a.devices.length} device${a.devices.length > 1 ? "s" : ""}</span></div></div>
+      <p class="soft">${a.keeps}</p>
+      <div>${uses(a)}</div>
+      <div class="stack" style="gap:6px">${meter(a.used, a.alloc, a.warn)}<div class="row between"><span class="num">${size(a.used)} of ${size(a.alloc)}</span>${a.warn ? '<span class="badge warn">Filling up</span>' : `<span class="faint" style="font-size:13px">${a.devices[0][1]}</span>`}</div></div>
+    </a>`).join("")}
+    <a class="card appcard" href="#connect" style="border-style:dashed;box-shadow:none;place-content:center;text-align:center;min-height:190px">
+      <h3>Connect another project</h3><p class="soft">Deskglow, ClaudeIn and your keystores are not connected yet.</p>
+    </a>
+  </div>`;
+
+SCREENS.app = (id) => {
+  const a = app(id) || APPS[0], files = FILES[a.id] || FILES["egx-analyzer"];
+  return `
+  <div class="crumb"><a href="#apps">Apps</a> / ${a.name}</div>
+  <div class="row wrap" style="margin-bottom:22px">${mark(a)}<div style="flex:1;min-width:200px"><h1 style="margin:0">${a.name}</h1><span class="soft mono">${a.id}</span></div>
+    <a class="btn" href="#connect">Setup code</a><a class="btn" href="#files/${a.id}">Browse files</a></div>
+  ${a.warn ? `<p class="note" style="margin-bottom:16px">${a.warn}. Give it more space or keep fewer backups below.</p>` : ""}
+  <div class="grid g2">
+    <section class="card">
+      <h2>What it keeps here</h2>
+      <p class="soft" style="margin-bottom:12px">${a.keeps}.</p>
+      <div class="stack" style="gap:6px;margin-bottom:16px">${meter(a.used, a.alloc, a.warn)}<div class="row between"><span class="num">${size(a.used)} of ${size(a.alloc)}</span><button class="btn small" data-toast="Space for ${a.name} would be changed here">Change space</button></div></div>
+      <div class="list">${files.slice(0, 3).map(([n, s, w]) => `<div class="row between"><span class="mono name" style="overflow:hidden;text-overflow:ellipsis">${n}</span><span class="soft num" style="white-space:nowrap">${size(s)} · ${w}</span></div>`).join("")}</div>
+    </section>
+    <section class="card">
+      <h2>Devices</h2>
+      <div class="list">${a.devices.map(([n, w]) => `<div class="row"><span class="dot"></span><div style="flex:1"><h3>${n}</h3><span class="soft" style="font-size:13px">Last seen ${w}</span></div><button class="btn small danger" data-toast="${n} would be blocked from ${a.name}">Block</button></div>`).join("")}</div>
+    </section>
+    <section class="card">
+      <h2>Rules</h2>
+      <div class="list">
+        <div class="row"><div style="flex:1"><h3>Keep the last 7 backups ${planned}</h3><span class="soft" style="font-size:13px">Older files under <code>backups/</code> are removed each night</span></div><button class="sw" role="switch" aria-checked="${a.uses.includes("backup")}" aria-label="Keep the last 7 backups"></button></div>
+        <div class="row"><div style="flex:1"><h3>Share a space with another app ${planned}</h3><span class="soft" style="font-size:13px">${a.share ? `Shares <code>${a.share}</code> with Signal Lab EGX` : "Not sharing with any app"}</span></div><button class="sw" role="switch" aria-checked="${!!a.share}" aria-label="Share a space with another app"></button></div>
+        <div class="row"><div style="flex:1"><h3>Publish folder for updates ${planned}</h3><span class="soft" style="font-size:13px">Devices on your network read <code>releases/</code> without a key</span></div><button class="sw" role="switch" aria-checked="${a.uses.includes("updates")}" aria-label="Publish folder for updates"></button></div>
+        <div class="row"><div style="flex:1"><h3>Undo for 14 days</h3><span class="soft" style="font-size:13px">Deleted and overwritten files can be brought back</span></div><button class="sw" role="switch" aria-checked="true" aria-label="Undo for 14 days"></button></div>
+      </div>
+    </section>
+    <section class="card">
+      <h2>Notifications</h2>
+      <div class="list">
+        <div class="row"><div style="flex:1"><h3>Tell devices when files change</h3><span class="soft" style="font-size:13px">So the other device syncs right away</span></div><button class="sw" role="switch" aria-checked="true" aria-label="Tell devices when files change"></button></div>
+        <div class="row"><div style="flex:1"><h3>Let the app send its own messages ${planned}</h3><span class="soft" style="font-size:13px">For example "Evening calls are ready"</span></div><button class="sw" role="switch" aria-checked="${a.uses.includes("notify")}" aria-label="Let the app send its own messages"></button></div>
+      </div>
+      <h2 style="margin-top:22px">Recent activity</h2>
+      <div class="list">${FEED.filter((f) => f[1] === a.id).concat([["03:00", a.id, "Copied to the SD card"]]).map(([t, , text]) => `<div class="row"><span class="mono faint" style="width:44px">${t}</span><span>${text}</span></div>`).join("")}</div>
+    </section>
+  </div>`;
+};
+
+const WIZ = { kind: "android", goals: new Set(["backup"]) };
+const SNIP = {
+  android: {
+    setup: '// build.gradle.kts\nimplementation("cloud.pocket:pocket-lite:0.3.0")   // no AWS SDK\n\nval pocket = Pocket.connect(context, app = "my-app")',
+    backup: '// Back up a file and keep the last 7 copies\npocket.backup(File(filesDir, "ledger.db"), keep = 7)',
+    sync: '// Two-way sync of a folder between your devices\npocket.sync(File(filesDir, "sync"), bucket = "shared")\npocket.changes { change -> reload(change.key) }',
+    updates: '// Read the newest release from the publish folder\nval latest = pocket.releases().latest()\nif (latest.version > BuildConfig.VERSION_NAME) install(latest.download())',
+    notify: '// Send a message to your other devices\npocket.notify(title = "Evening calls are ready", body = "6 new calls")',
+  },
+  python: {
+    setup: '# pip install pocket-cloud\nimport pocket_cloud as pocket\n\napp = pocket.app("my-app")',
+    backup: '# Back up a file and keep the last 7 copies\napp.backup("data/station.db", keep=7)',
+    sync: '# Two-way sync of a folder between your devices\napp.sync("data/research", bucket="shared")\nfor change in app.changes():\n    reload(change.key)',
+    updates: '# Publish a release for your other devices\napp.publish("dist/Setup-1.2.0.exe", version="1.2.0")',
+    notify: '# Send a message to your phone\napp.notify("Video is ready to review", title="Village")',
+  },
+  electron: {
+    setup: '// npm install pocket-cloud\nconst pocket = require("pocket-cloud");\n\nconst app = await pocket.app("my-app");',
+    backup: '// Back up a file and keep the last 7 copies\nawait app.backup(path.join(userData, "layouts.json"), { keep: 7 });',
+    sync: '// Two-way sync of a folder between your devices\nawait app.sync(path.join(userData, "recordings"), { bucket: "shared" });\napp.onChange((change) => reload(change.key));',
+    updates: '// electron-updater: read releases from the publish folder\nautoUpdater.setFeedURL({ provider: "generic", url: app.releasesUrl() });',
+    notify: '// Send a message to your other devices\nawait app.notify("Lights out in 10 minutes", { title: "RaceWall" });',
+  },
+};
+SCREENS.connect = () => {
+  const s = SNIP[WIZ.kind], code = [s.setup].concat(["backup", "sync", "updates", "notify"].filter((g) => WIZ.goals.has(g)).map((g) => s[g])).join("\n\n");
+  const chip = (group, key, label) => `<button class="chip" data-wiz="${group}:${key}" aria-pressed="${group === "kind" ? WIZ.kind === key : WIZ.goals.has(key)}">${label}</button>`;
+  return `
+  <div class="crumb"><a href="#apps">Apps</a> / Connect a project</div>
+  <h1>Connect a project</h1>
+  <p class="lede">Say what the project is and what you want from the phone. The code on the right is everything the project needs.</p>
+  <div class="grid g2" style="align-items:start">
+    <div class="stack" style="gap:16px">
+      <section class="card"><h2>What kind of project?</h2><div class="row wrap">${chip("kind", "android", "Android app")}${chip("kind", "python", "Python")}${chip("kind", "electron", "Electron / Node")}</div></section>
+      <section class="card"><h2>What should it do?</h2><div class="row wrap">${chip("goal", "backup", "Back up its data")}${chip("goal", "sync", "Sync between devices")}${chip("goal", "updates", "Deliver updates")}${chip("goal", "notify", "Send notifications")}</div></section>
+      <section class="card"><h2>This machine</h2>
+        <div class="row"><span class="dot"></span><div style="flex:1"><h3>kabash-g16 is set up</h3><span class="soft" style="font-size:13px">The setup file is saved; new projects connect by themselves</span></div></div>
+        <p class="soft" style="margin-top:12px;font-size:14px">On a phone or another PC, scan the code in <a href="#settings">Settings</a> once.</p>
+      </section>
+    </div>
+    <section class="card">
+      <div class="row between" style="margin-bottom:12px"><h2 style="margin:0">Paste this into the project</h2><button class="btn small" data-toast="Copied">Copy</button></div>
+      <pre><code>${code.replace(/</g, "&lt;")}</code></pre>
+      <p class="soft" style="margin-top:12px;font-size:14px">${planned} The short helpers above are the proposed library. Today a project gets a plain S3 client from <code>pocket.connect()</code>.</p>
+    </section>
+  </div>`;
+};
+
+const FS = { app: "egx-analyzer", space: "shared" };
+SCREENS.files = (id) => {
+  if (id && app(id)) FS.app = id;
+  const a = app(FS.app), files = FILES[a.id] || FILES["egx-analyzer"];
+  return `
+  <h1>Files</h1>
+  <p class="lede">Everything your apps keep on the phone. Anything deleted in the last 14 days can be brought back.</p>
+  <div class="row wrap" style="margin-bottom:16px">
+    <select class="btn" id="fs-app" aria-label="App">${APPS.map((x) => `<option value="${x.id}" ${x.id === a.id ? "selected" : ""}>${x.name}</option>`).join("")}</select>
+    <div class="seg" role="group" aria-label="Space"><button data-space="shared" aria-pressed="${FS.space === "shared"}">Shared by its devices</button><button data-space="device" aria-pressed="${FS.space === "device"}">One device only</button></div>
+    <span style="flex:1"></span>
+    <button class="btn" data-toast="Deleted files from the last 14 days would be listed here">Deleted files</button>
+    <button class="btn primary" data-toast="A file picker would open here">Upload</button>
+  </div>
+  <section class="card">
+    ${FS.space === "device" ? `<p class="soft">Nothing here yet. ${a.name} keeps everything in the space its devices share.</p>` : `
+    <div class="list">${files.map(([n, s, w]) => `<div class="file"><span class="mono name">${n}</span><span class="soft num size">${size(s)}</span><span class="soft when">${w}</span><span class="row" style="gap:6px"><button class="btn small" data-toast="A link to ${n.split("/").pop()} was copied; it stops working in 7 days">Share</button><button class="btn small" data-toast="${n.split("/").pop()} would download">Download</button></span></div>`).join("")}</div>`}
+  </section>`;
+};
+
+SCREENS.phone = () => {
+  const jobs = [["Copy internal storage to the SD card", "Today 03:00", "ok", "41 s"], ["Move files older than 7 days to the card", "Today 03:01", "ok", "212 files"], ["Clear the 14-day undo", "Today 03:02", "ok", "38 MB freed"], ["Check the SD card for errors", "Sunday 03:10", "warn", "Slow writes, 6 MB/s"]];
+  return `
+  <h1>Phone</h1>
+  <p class="lede">The ${PHONE.model} itself: its storage, its SD cards and the housekeeping it does each night.</p>
+  <div class="grid g2">
+    <section class="card"><h2>Storage</h2>
+      <div class="stack" style="gap:16px">
+        <div class="stack" style="gap:6px"><div class="row between"><h3>Internal storage</h3><span class="num">${size(PHONE.intUsed)} of ${size(PHONE.intTotal)}</span></div>${meter(PHONE.intUsed, PHONE.intTotal)}<span class="soft" style="font-size:13px">Recent files. 10 GB is always left free for Android.</span></div>
+        <div class="stack" style="gap:6px"><div class="row between"><h3>SD card · Card 2</h3><span class="num">${size(PHONE.sdUsed)} of ${size(PHONE.sdTotal)}</span></div>${meter(PHONE.sdUsed, PHONE.sdTotal)}<span class="soft" style="font-size:13px">Older files, the nightly copy and the undo.</span></div>
+        <div class="row wrap"><button class="btn" data-toast="The swap guide would start here">Swap the SD card</button><button class="btn" data-toast="Card 1 would be forgotten">Forget Card 1</button></div>
+      </div>
+    </section>
+    <section class="card"><h2>Services</h2>
+      <div class="list">
+        ${[["Storage server", "Up 38 days", ""], ["Tailscale", "100.82.2.29", ""], ["Notifications", "2 devices listening", ""], ["Share links", "Off", "off"], ["Home Wi-Fi fast path", "Off", "off"]].map(([n, v, c]) => `<div class="row"><span class="dot ${c}"></span><span style="flex:1">${n}</span><span class="soft">${v}</span></div>`).join("")}
+      </div>
+      <div class="row" style="margin-top:16px"><button class="btn" data-toast="The storage server would restart; uploads wait a few seconds">Restart the storage server</button></div>
+    </section>
+    <section class="card"><h2>Nightly jobs</h2>
+      <div class="list">${jobs.map(([n, w, r, d]) => `<div class="row"><span class="dot ${r === "warn" ? "warn" : ""}"></span><div style="flex:1"><h3>${n}</h3><span class="soft" style="font-size:13px">${w} · ${d}</span></div><button class="btn small" data-toast="'${n}' would run now">Run now</button></div>`).join("")}</div>
+    </section>
+    <section class="card"><h2>Log</h2>
+      <pre>22:52:07  village      PUT  backups/station-2026-11-20.db  82 MB  200
+22:41:30  egx-analyzer PUT  sync/reports/2026-11-20-a41c.json     200
+22:40:02  signal-lab-egx PUT backups/egx-ledger-2026-11-20.db     200
+21:37:44  modelgen     share mech-arm-v4.glb  7 days
+03:02:11  nightly      undo cleared, 38 MB freed</pre>
+      <div class="row" style="margin-top:12px"><button class="btn small" data-toast="The full request log would open here">Open the full log</button></div>
+    </section>
+  </div>`;
+};
+
+SCREENS.settings = () => {
+  const sw = (label, hint, on) => `<div class="row"><div style="flex:1"><h3>${label}</h3><span class="soft" style="font-size:13px">${hint}</span></div><button class="sw" role="switch" aria-checked="${on}" aria-label="${label}"></button></div>`;
+  return `
+  <h1>Settings</h1>
+  <p class="lede">How your machines reach the phone, and who is allowed in.</p>
+  <div class="grid g2" style="align-items:start">
+    <section class="card"><h2>Set up another machine</h2>
+      <p class="soft" style="margin-bottom:12px">Save this as <code>.pocket/config</code> in your home folder on a PC. On a phone, scan the code from the app.</p>
+      <pre>[pocket]
+endpoint = http://pocket:9000
+enroll_secret = ••••••••••••••••</pre>
+      <div class="row wrap" style="margin-top:12px"><button class="btn" data-toast="Copied with the real secret">Copy</button><button class="btn" data-toast="A QR code would show here">Show QR code</button><button class="btn danger" data-toast="A new secret would be made; machines already set up keep working">Replace the secret</button></div>
+    </section>
+    <section class="card"><h2>Connection</h2>
+      <div class="kv"><span>Storage address</span><span class="mono">http://pocket:9000</span><span>Panel address</span><span class="mono">http://pocket:8000</span><span>New projects</span><span>Connect straight away, 3 GB each</span></div>
+    </section>
+    <section class="card"><h2>Features</h2>
+      <div class="list">
+        ${sw("Notifications", "Devices hear about changes without polling", true)}
+        ${sw("Share links", "Links that open outside your network, through a tunnel", false)}
+        ${sw("Home Wi-Fi fast path", "Skip Tailscale when a device is on the same Wi-Fi", false)}
+        ${sw("Read-only mode", "Refuse every upload and delete", false)}
+      </div>
+    </section>
+    <section class="card"><h2>Security</h2>
+      <div class="list">
+        <div class="row"><div style="flex:1"><h3>Admin password</h3><span class="soft" style="font-size:13px">Changed 12 Oct</span></div><button class="btn small" data-toast="The password form would open here">Change</button></div>
+        <div class="row"><div style="flex:1"><h3>Settings backup</h3><span class="soft" style="font-size:13px">Apps, devices and rules in one file</span></div><button class="btn small" data-toast="The backup file would download">Download</button></div>
+      </div>
+    </section>
+  </div>`;
+};
+
+/* ---------- routing ---------- */
+function drawNav(page) {
+  const top = page === "app" || page === "connect" ? "apps" : page;
+  $("rail-links").innerHTML = NAV.map(([k, l]) => `<a class="nav ${k === top ? "on" : ""}" href="#${k}" ${k === top ? 'aria-current="page"' : ""}>${icon(k)}${l}${k === "home" ? '<span class="badge warn">2</span>' : ""}</a>`).join("");
+  $("tabs").innerHTML = NAV.map(([k, l]) => `<a class="${k === top ? "on" : ""}" href="#${k}" ${k === top ? 'aria-current="page"' : ""}>${icon(k)}${l}</a>`).join("");
+}
+let ROUTE = (location.hash || "").slice(1) || "home";
+function go(route) {          // links work even where the address can't change (an embedded preview)
+  ROUTE = route || "home";
+  try { history.pushState(null, "", "#" + ROUTE); } catch {}
+  render();
+}
+function render(keepScroll) {
+  const [page, arg] = ROUTE.split("/");
+  const name = SCREENS[page] ? page : "home";
+  $("view").innerHTML = SCREENS[name](arg);
+  drawNav(name);
+  if (!keepScroll) window.scrollTo(0, 0);
+  requestAnimationFrame(() => document.querySelectorAll(".level").forEach((r) => { r.setAttribute("height", r.dataset.h); r.setAttribute("y", r.dataset.y); }));
+}
+document.addEventListener("click", (e) => {
+  const link = e.target.closest('a[href^="#"]');
+  if (link) { e.preventDefault(); go(link.getAttribute("href").slice(1)); return; }
+  const t = e.target.closest("[data-toast],[data-wiz],[data-space],.sw,#theme");
+  if (!t) return;
+  if (t.id === "theme") {
+    const dark = document.documentElement.dataset.theme ? document.documentElement.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.dataset.theme = dark ? "light" : "dark";
+  } else if (t.dataset.wiz) {
+    const [group, key] = t.dataset.wiz.split(":");
+    if (group === "kind") WIZ.kind = key; else WIZ.goals.has(key) ? WIZ.goals.delete(key) : WIZ.goals.add(key);
+    render(true);
+  } else if (t.dataset.space) { FS.space = t.dataset.space; render(true); }
+  else if (t.classList.contains("sw")) t.setAttribute("aria-checked", t.getAttribute("aria-checked") !== "true");
+  else toast(t.dataset.toast);
+});
+document.addEventListener("change", (e) => { if (e.target.id === "fs-app") { FS.app = e.target.value; render(true); } });
+window.addEventListener("popstate", () => { ROUTE = (location.hash || "").slice(1) || "home"; render(); });
+render();
+</script>
+</body>
+</html>
