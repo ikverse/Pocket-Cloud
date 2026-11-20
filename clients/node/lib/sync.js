@@ -37,14 +37,15 @@ function pad(n) {
   return String(n).padStart(2, "0");
 }
 
-function conflictName(rel, deviceName) {
+/** `<name> (conflict <device> <yyyy-mm-dd HHMM>).<ext>`; n > 1 adds a counter when that name is taken. */
+function conflictName(rel, deviceName, n = 1) {
   const d = new Date();
   const when = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}${pad(d.getMinutes())}`;
   const dev = String(deviceName).replace(/[\\/:*?"<>|]/g, "-");
   const dir = path.posix.dirname(rel);
   const ext = path.posix.extname(rel);
   const base = path.posix.basename(rel, ext);
-  const name = `${base} (conflict ${dev} ${when})${ext}`;
+  const name = `${base} (conflict ${dev} ${when}${n > 1 ? ` ${n}` : ""})${ext}`;
   return dir === "." ? name : `${dir}/${name}`;
 }
 
@@ -81,7 +82,8 @@ module.exports = async function sync(app, folder, o = {}) {
   // ---- the remote side now ----
   let remote = null;
   let cursor = null;
-  if (!first && useFeed && state.cursor) {
+  // state.full: deletes were held back last run, so list everything rather than trust the feed from the cursor
+  if (!first && useFeed && state.cursor && !state.full) {
     try {
       remote = {};
       for (const [rel, s] of Object.entries(prev)) remote[rel] = { etag: s.etag, size: s.rsize ?? null };
@@ -129,9 +131,21 @@ module.exports = async function sync(app, folder, o = {}) {
     }
   };
   const conflict = async (rel) => {
-    const cRel = conflictName(rel, app.dev.deviceName);
-    fs.renameSync(abs(rel), abs(cRel));
-    const e = await app.putFile(keyOf(cRel), abs(cRel), { bucket, ifNoneMatch: "*" });
+    let cRel;
+    let e;
+    for (let n = 1; ; n++) {
+      if (n > 1000) throw new PocketError(`No free conflict name for ${keyOf(rel)}.`, "PocketError");
+      cRel = conflictName(rel, app.dev.deviceName, n);
+      if (fs.existsSync(abs(cRel)) || cRel in remote || cRel in next) continue;
+      fs.renameSync(abs(rel), abs(cRel));
+      try {
+        e = await app.putFile(keyOf(cRel), abs(cRel), { bucket, ifNoneMatch: "*" });
+        break;
+      } catch (err) {
+        fs.renameSync(abs(cRel), abs(rel));
+        if (!(err instanceof PreconditionFailed)) throw err; // taken on the server: try the next number
+      }
+    }
     record(cRel, e.etag, e.size);
     result.conflicts.push(keyOf(rel), keyOf(cRel));
     await download(rel);
@@ -199,7 +213,7 @@ module.exports = async function sync(app, folder, o = {}) {
   }
 
   const tmp = path.join(root, `.pocket-sync-${crypto.randomBytes(4).toString("hex")}.tmp`);
-  fs.writeFileSync(tmp, JSON.stringify({ version: 1, bucket, prefix, cursor, files: next }, null, 1));
+  fs.writeFileSync(tmp, JSON.stringify({ version: 1, bucket, prefix, cursor, full: held, files: next }, null, 1));
   fs.renameSync(tmp, stateFile);
 
   if (held) {

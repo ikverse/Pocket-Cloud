@@ -54,6 +54,7 @@ const BY_CODE = {
   RateLimited: RateLimited,
   FeatureOff: FeatureOff,
   FeatureMissing: FeatureOff,
+  SharesOff: FeatureOff,
   ServiceUnavailable: Unreachable,
   Unreachable: Unreachable,
 };

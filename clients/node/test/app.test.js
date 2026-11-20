@@ -582,3 +582,91 @@ test("sync: without the change feed, and after CursorExpired, a full listing", f
   const r2 = await b.sync(root);
   assert.deepStrictEqual(r2.deletedLocal, ["later.txt"]);
 });
+
+// ---------- review fixes ----------
+
+test("sync: local deletes held back by the guard go through on a later run", async () => {
+  const a = await env.open("node-sync6");
+  const root = env.tmp();
+  for (let i = 0; i < 52; i++) await a.put(`f${i}.txt`, String(i));
+  await a.sync(root);
+  for (let i = 0; i < 52; i++) await a.delete(`f${i}.txt`); // another device deleted them
+  for (let pass = 0; pass < 2; pass++) {
+    const err = await a.sync(root).catch((e) => e);
+    assert.strictEqual(err.code, "MassDelete", `pass ${pass}: still held`);
+    assert.strictEqual(err.count, 52);
+    assert.strictEqual(fs.readdirSync(root).filter((n) => n.endsWith(".txt")).length, 52);
+  }
+  const r = await a.sync(root, { allowMassDelete: true });
+  assert.strictEqual(r.deletedLocal.length, 52);
+  assert.deepStrictEqual(fs.readdirSync(root).filter((n) => n.endsWith(".txt")), []);
+});
+
+test("sync: two conflicts in the same minute both survive", async () => {
+  const { a, root } = await syncedPair("node-sync7");
+  const copies = [];
+  for (const n of [1, 2]) {
+    write(root, "edit.txt", `mine ${n}`, new Date(Date.now() + 5000 * n));
+    await a.put("edit.txt", `theirs ${n}`);
+    const r = await a.sync(root);
+    copies.push(r.conflicts[1]);
+  }
+  assert.notStrictEqual(copies[0], copies[1]);
+  assert.match(copies[1], / 2\)\.txt$/);
+  assert.strictEqual((await a.get(copies[0])).toString(), "mine 1");
+  assert.strictEqual((await a.get(copies[1])).toString(), "mine 2");
+  assert.strictEqual(read(root, copies[0]), "mine 1");
+});
+
+test("backup keeps the one just written even when the device clock is behind", async () => {
+  const a = await env.open("node-backup-clock");
+  for (const s of ["29990101-000000", "29990102-000000", "29990103-000000"]) await a.put(`backups/app.db/${s}-app.db`, s);
+  const db = path.join(env.tmp(), "app.db");
+  fs.writeFileSync(db, "now");
+  const e = await a.backup(db, { keep: 2 });
+  const left = (await collect(a.list("backups/app.db/"))).map((x) => x.key);
+  assert.deepStrictEqual(left.sort(), [e.key, "backups/app.db/29990103-000000-app.db"].sort());
+});
+
+test("SharesOff is FeatureOff", () => {
+  const err = require("../lib/errors").fromResponse(403, "SharesOff", { message: "off" });
+  assert.ok(err instanceof pocket.FeatureOff);
+  assert.strictEqual(err.code, "SharesOff");
+});
+
+test("an upload slower than timeoutMs succeeds while it makes progress", fakeOnly(), async () => {
+  const a = await env.open("node-slow", { timeoutMs: 1000 });
+  const src = path.join(env.tmp(), "slow.bin");
+  const data = crypto.randomBytes(4 * 1024 * 1024);
+  fs.writeFileSync(src, data);
+  await env.control("slow", { ms: 30 });
+  const t0 = Date.now();
+  try {
+    const e = await a.putFile("slow.bin", src);
+    assert.strictEqual(e.size, data.length);
+    assert.ok(Date.now() - t0 > 1500, `took ${Date.now() - t0} ms, should be well over timeoutMs`);
+    const e2 = await a.put("slow2.bin", data); // a Buffer body too
+    assert.strictEqual(e2.etag, e.etag);
+  } finally {
+    await env.control("slow", { ms: 0 });
+  }
+});
+
+test("a download that stalls or breaks off mid-body is retried", fakeOnly(), async () => {
+  const a = await env.open("node-break", { timeoutMs: 500 });
+  const data = crypto.randomBytes(200 * 1024);
+  await a.put("b.bin", data);
+  await env.control("break", { route: "GET /_pocket/files/shared/b.bin", mode: "stall", times: 1 });
+  assert.ok((await a.get("b.bin")).equals(data));
+  await env.control("break", { route: "GET /_pocket/files/shared/b.bin", mode: "cut", times: 1 });
+  const dir = env.tmp();
+  await a.getFile("b.bin", path.join(dir, "b.bin"));
+  assert.ok(fs.readFileSync(path.join(dir, "b.bin")).equals(data));
+  assert.deepStrictEqual(fs.readdirSync(dir), ["b.bin"]);
+  // every try breaks: Unreachable, not a hang or a TypeError
+  await env.control("break", { route: "GET /_pocket/files/shared/b.bin", mode: "cut", times: 4 });
+  await assert.rejects(a.get("b.bin"), (e) => e instanceof pocket.Unreachable && e.code === "Unreachable");
+  // a JSON answer that breaks off is retried the same way
+  await env.control("break", { route: "GET /_pocket/list", mode: "cut", times: 1 });
+  assert.strictEqual((await collect(a.list())).length, 1);
+});

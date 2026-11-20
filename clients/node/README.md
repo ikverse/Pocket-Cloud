@@ -188,6 +188,11 @@ npm test
 
 - `test/sign.test.js` checks the signing vectors of `docs/app-api.md` section 12.
 - `test/app.test.js` runs `app()` against an in-memory fake server (`test/fake-server.js`, section 11 of the
-  contract). Tests that use the fake's `/_fake/` controls are marked fake-only.
+  contract). Tests that use the fake's `/_fake/` controls are marked fake-only. The fake has two extra
+  controls of its own, `/_fake/slow` and `/_fake/break`, for the timeout and broken-answer tests.
 - `test/client.test.js` runs `connect()` against the real server. It needs Python and rclone (`tools/rclone/`,
-  or set `POCKET_RCLONE` to the rclone binary).
+  or set `POCKET_RCLONE` to the rclone binary). Without rclone, its tests are skipped, with a message saying so.
+
+`timeoutMs` (default 30 s) is an idle timeout. It runs out only when nothing moves for that long: no
+upload chunk sent, no answer, no download chunk received. A slow upload or download that keeps moving is never
+cut off.

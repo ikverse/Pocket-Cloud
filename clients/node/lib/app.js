@@ -19,7 +19,80 @@ const MAX_PUT = 2147483648;
 const VERSION = /^[A-Za-z0-9._+-]{1,64}$/;
 const INFO_TTL_MS = 60 * 1000;
 
+const CHUNK = 64 * 1024;
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function* bufferChunks(buf) {
+  for (let i = 0; i < buf.length; i += CHUNK) yield buf.subarray(i, i + CHUNK);
+}
+
+/** A request body as a web stream that calls touch() each time the connection takes another chunk. */
+function progressBody(source, touch) {
+  const it = source[Symbol.asyncIterator] ? source[Symbol.asyncIterator]() : source[Symbol.iterator]();
+  return new ReadableStream({
+    async pull(c) {
+      const { value, done } = await it.next();
+      touch();
+      if (done) c.close();
+      else c.enqueue(value instanceof Uint8Array ? value : new Uint8Array(value));
+    },
+    async cancel() {
+      if (it.return) await it.return();
+    },
+  });
+}
+
+/**
+ * fetch with an idle timeout instead of a fixed one: the timer restarts whenever a body chunk goes out or comes
+ * in, and stays on while the answer's body is read. init.body may be a function(touch) giving the body.
+ * Throws Unreachable when there is no answer; a stall later makes reading the body fail.
+ */
+async function fetchWatched(url, init, idleMs, signal) {
+  const ctrl = new AbortController();
+  let timer = null;
+  let timedOut = false;
+  const onAbort = () => ctrl.abort();
+  const touch = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      timedOut = true;
+      ctrl.abort();
+    }, idleMs);
+    timer.unref?.();
+  };
+  const done = () => {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener("abort", onAbort);
+  };
+  if (signal) signal.addEventListener("abort", onAbort, { once: true });
+  touch();
+  let res;
+  try {
+    const body = typeof init.body === "function" ? init.body(touch) : init.body;
+    res = await fetch(url, { ...init, body, duplex: body ? "half" : undefined, signal: ctrl.signal });
+  } catch (e) {
+    done();
+    if (signal?.aborted) throw new PocketError("Stopped.", "Aborted", 0);
+    const why = timedOut ? "timed out" : e.cause?.code || e.message;
+    throw new Unreachable(`Pocket Cloud can't be reached at ${new URL(url).origin}: ${why}`, "Unreachable");
+  }
+  if (!res.body) {
+    done();
+    return res;
+  }
+  touch();
+  const watched = res.body.pipeThrough(
+    new TransformStream({
+      transform(chunk, c) {
+        touch();
+        c.enqueue(chunk);
+      },
+      flush: done,
+    })
+  );
+  return new Response(watched, { status: res.status, statusText: res.statusText, headers: res.headers });
+}
 
 function fileHash(file) {
   return new Promise((resolve, reject) => {
@@ -80,13 +153,13 @@ class ChangeFeed {
     await app._ensure("changes");
     const wait = this._o.wait || 0;
     for (;;) {
-      const res = await app._request("GET", "/_pocket/changes", {
+      const d = await app._request("GET", "/_pocket/changes", {
         query: [["since", this.cursor], ["limit", this._o.limit], ["wait", wait || null]],
         retry: true,
         timeoutMs: app.timeoutMs + wait * 1000,
         signal: this._o.signal,
+        read: (r) => r.json(),
       });
-      const d = await res.json();
       this.cursor = d.cursor;
       for (const c of d.changes || []) yield c;
       if (!d.more) return;
@@ -137,30 +210,21 @@ class PocketApp {
     let body;
     if (o.file) {
       bodySha = o.file.sha256;
-      body = Readable.toWeb(fs.createReadStream(o.file.path));
       headers["content-length"] = String(o.file.size);
+      body = (touch) => progressBody(fs.createReadStream(o.file.path, { highWaterMark: CHUNK }), touch);
     } else if (o.body != null) {
-      body = toBuffer(o.body);
-      bodySha = sha256hex(body);
+      const buf = toBuffer(o.body);
+      bodySha = sha256hex(buf);
+      if (buf.length > CHUNK) {
+        headers["content-length"] = String(buf.length);
+        body = (touch) => progressBody(bufferChunks(buf), touch);
+      } else body = buf;
     }
     if (method === "PUT") headers["x-pocket-content-sha256"] = bodySha;
     const c = this.dev.creds;
     Object.assign(headers, signPocket(method, urlPath, query, bodySha, c.access_key, c.secret_key));
     const url = this.dev.endpoint + urlPath + (query ? "?" + query : "");
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), o.timeoutMs || this.timeoutMs);
-    const onAbort = () => ctrl.abort();
-    if (o.signal) o.signal.addEventListener("abort", onAbort, { once: true });
-    try {
-      return await fetch(url, { method, headers, body, duplex: body ? "half" : undefined, signal: ctrl.signal });
-    } catch (e) {
-      if (o.signal?.aborted) throw new PocketError("Stopped.", "Aborted", 0);
-      const why = ctrl.signal.aborted ? "timed out" : e.cause?.code || e.message;
-      throw new Unreachable(`Pocket Cloud can't be reached at ${this.dev.endpoint}: ${why}`, "Unreachable");
-    } finally {
-      clearTimeout(timer);
-      if (o.signal) o.signal.removeEventListener("abort", onAbort);
-    }
+    return fetchWatched(url, { method, headers, body }, o.timeoutMs || this.timeoutMs, o.signal);
   }
 
   async _errorOf(res, method) {
@@ -172,11 +236,18 @@ class PocketApp {
 
   /**
    * A signed request. o: {query: [[k, v]], body, file: {path, size, sha256}, headers, retry, ok: [status],
-   * timeoutMs, signal}. Re-enrolls once when the device moved or its key was replaced; with retry, retries
-   * Unreachable / 503 up to 3 times.
+   * timeoutMs (idle), signal, read(res)}. read consumes the answer and gives the result; when reading fails
+   * (connection dropped, stalled) that is Unreachable, retried like the request. Re-enrolls once when the device
+   * moved or its key was replaced; with retry, retries Unreachable / 503 up to 3 times.
    */
   async _request(method, urlPath, o = {}) {
     const query = o.query ? encodeQuery(o.query) : "";
+    const read =
+      o.read ||
+      (async (r) => {
+        await r.arrayBuffer();
+        return r;
+      });
     let attempt = 0;
     let reenrolled = false;
     for (;;) {
@@ -187,8 +258,16 @@ class PocketApp {
       } catch (e) {
         err = e;
       }
-      if (res) {
-        if (res.ok || (o.ok || []).includes(res.status)) return res;
+      if (res && (res.ok || (o.ok || []).includes(res.status))) {
+        try {
+          return await read(res);
+        } catch (e) {
+          if (o.signal?.aborted) throw new PocketError("Stopped.", "Aborted", 0);
+          if (e instanceof PocketError && !(e instanceof Unreachable)) throw e;
+          err = e instanceof Unreachable ? e : new Unreachable(`The answer from Pocket Cloud broke off: ${e.cause?.code || e.message}`, "Unreachable");
+          res = null;
+        }
+      } else if (res) {
         err = await this._errorOf(res, method);
         const moved = res.headers.get("x-pocket-error") === "device-address-changed";
         if (!reenrolled && res.status === 403 && (moved || err.code === "InvalidAccessKeyId")) {
@@ -227,8 +306,7 @@ class PocketApp {
   async info({ fresh = false } = {}) {
     await this._ensure("files");
     if (!fresh && this._info && Date.now() - this._info.at < INFO_TTL_MS) return this._info.data;
-    const res = await this._request("GET", "/_pocket/app", { retry: true });
-    const data = await res.json();
+    const data = await this._request("GET", "/_pocket/app", { retry: true, read: (r) => r.json() });
     this._info = { at: Date.now(), data };
     return data;
   }
@@ -237,26 +315,31 @@ class PocketApp {
 
   async get(key, { bucket = "shared" } = {}) {
     await this._ensure("files");
-    const res = await this._request("GET", this._filePath(bucket, key), { retry: true });
-    return Buffer.from(await res.arrayBuffer());
+    return this._request("GET", this._filePath(bucket, key), {
+      retry: true,
+      read: async (r) => Buffer.from(await r.arrayBuffer()),
+    });
   }
 
   async getFile(key, dest, { bucket = "shared" } = {}) {
     await this._ensure("files");
-    const res = await this._request("GET", this._filePath(bucket, key), { retry: true });
-    const entry = this._entryFromHeaders(bucket, key, res.headers);
     fs.mkdirSync(path.dirname(path.resolve(dest)), { recursive: true });
-    const tmp = tmpBeside(path.resolve(dest));
-    try {
-      await pipeline(Readable.fromWeb(res.body), fs.createWriteStream(tmp));
-      if (entry.modified) fs.utimesSync(tmp, new Date(), new Date(entry.modified * 1000));
-      fs.renameSync(tmp, dest);
-    } catch (e) {
-      fs.rmSync(tmp, { force: true });
-      if (e instanceof PocketError) throw e;
-      throw new Unreachable(`The download of ${key} broke off: ${e.message}`, "Unreachable");
-    }
-    return entry;
+    return this._request("GET", this._filePath(bucket, key), {
+      retry: true,
+      read: async (res) => {
+        const entry = this._entryFromHeaders(bucket, key, res.headers);
+        const tmp = tmpBeside(path.resolve(dest));
+        try {
+          await pipeline(Readable.fromWeb(res.body), fs.createWriteStream(tmp));
+          if (entry.modified) fs.utimesSync(tmp, new Date(), new Date(entry.modified * 1000));
+          fs.renameSync(tmp, dest);
+        } catch (e) {
+          fs.rmSync(tmp, { force: true });
+          throw e; // a broken download is Unreachable, and retried
+        }
+        return entry;
+      },
+    });
   }
 
   _writeHeaders(o) {
@@ -271,12 +354,13 @@ class PocketApp {
   async put(key, data, o = {}) {
     await this._ensure("files");
     const bucket = o.bucket || "shared";
-    const res = await this._request("PUT", this._filePath(bucket, key), {
+    const d = await this._request("PUT", this._filePath(bucket, key), {
       body: toBuffer(data),
       headers: this._writeHeaders(o),
       retry: !!(o.ifMatch || o.ifNoneMatch),
+      read: (r) => r.json(),
     });
-    return this._entry(bucket, key, await res.json());
+    return this._entry(bucket, key, d);
   }
 
   async putFile(key, src, o = {}) {
@@ -287,19 +371,22 @@ class PocketApp {
       throw new PocketError("Files over 2 GiB go through S3 multipart: use connect().", "EntityTooLarge", 0);
     }
     const { sha256, size } = await fileHash(src);
-    const res = await this._request("PUT", this._filePath(bucket, key), {
+    const d = await this._request("PUT", this._filePath(bucket, key), {
       file: { path: src, size, sha256 },
       headers: this._writeHeaders({ modified: st.mtimeMs / 1000, ...o }),
       retry: !!(o.ifMatch || o.ifNoneMatch),
+      read: (r) => r.json(),
     });
-    return this._entry(bucket, key, await res.json());
+    return this._entry(bucket, key, d);
   }
 
   async stat(key, { bucket = "shared" } = {}) {
     await this._ensure("files");
     try {
-      const res = await this._request("HEAD", this._filePath(bucket, key), { retry: true });
-      return this._entryFromHeaders(bucket, key, res.headers);
+      return await this._request("HEAD", this._filePath(bucket, key), {
+        retry: true,
+        read: async (r) => this._entryFromHeaders(bucket, key, r.headers),
+      });
     } catch (e) {
       if (e instanceof NotFound && e.code === "NoSuchKey") return null;
       throw e;
@@ -310,11 +397,11 @@ class PocketApp {
     await this._ensure("files");
     let cursor = null;
     do {
-      const res = await this._request("GET", "/_pocket/list", {
+      const d = await this._request("GET", "/_pocket/list", {
         query: [["bucket", bucket], ["prefix", prefix || null], ["delimiter", folders ? "/" : null], ["cursor", cursor], ["limit", limit]],
         retry: true,
+        read: (r) => r.json(),
       });
-      const d = await res.json();
       const items = (d.files || []).map((f) => this._entry(bucket, f.key, f));
       for (const k of d.folders || []) items.push({ bucket, key: k, size: null, etag: null, modified: null });
       items.sort((a, b) => Buffer.compare(Buffer.from(a.key), Buffer.from(b.key)));
@@ -332,11 +419,11 @@ class PocketApp {
     await this._ensure("move");
     const body = { from: { bucket, key: src }, to: { bucket: toBucket || bucket, key: dst }, overwrite: !!overwrite };
     if (ifMatch) body.if_match = ifMatch;
-    const res = await this._request("POST", "/_pocket/move", {
+    const d = await this._request("POST", "/_pocket/move", {
       body: JSON.stringify(body),
       headers: { "content-type": "application/json" },
+      read: (r) => r.json(),
     });
-    const d = await res.json();
     return this._entry(d.to.bucket, d.to.key, d);
   }
 
@@ -367,8 +454,10 @@ class PocketApp {
     for await (const e of this.list(folder, { bucket })) {
       if (/^\d{8}-\d{6}-/.test(e.key.slice(folder.length))) all.push(e);
     }
-    all.sort((a, b) => (a.key < b.key ? 1 : a.key > b.key ? -1 : 0));
-    for (const old of all.slice(keep)) {
+    // the one just written always stays and counts as one of `keep`, even when this device's clock is behind
+    const others = all.filter((e) => e.key !== entry.key);
+    others.sort((a, b) => (a.key < b.key ? 1 : a.key > b.key ? -1 : 0));
+    for (const old of others.slice(keep - 1)) {
       try {
         await this.delete(old.key, { bucket });
       } catch (e) {
@@ -596,9 +685,12 @@ class PocketApp {
       let old = null;
       let etag = null;
       try {
-        const res = await this._request("GET", this._filePath("shared", "releases/latest.json"), { retry: true });
-        etag = res.headers.get("etag");
-        old = JSON.parse(await res.text());
+        const got = await this._request("GET", this._filePath("shared", "releases/latest.json"), {
+          retry: true,
+          read: async (r) => ({ etag: r.headers.get("etag"), text: await r.text() }),
+        });
+        etag = got.etag;
+        old = JSON.parse(got.text);
       } catch (e) {
         if (!(e instanceof NotFound && e.code === "NoSuchKey") && !(e instanceof SyntaxError)) throw e;
       }
@@ -651,8 +743,9 @@ class PocketApp {
     }
     if (base) {
       try {
-        const res = await fetch(base + "latest.json", { signal: AbortSignal.timeout(this.timeoutMs) });
+        const res = await fetchWatched(base + "latest.json", { method: "GET" }, this.timeoutMs);
         if (res.status === 200) doc = await res.json();
+        else await res.arrayBuffer();
       } catch {}
     }
     if (!doc) doc = await this.getJson("releases/latest.json", { default: null });
@@ -699,38 +792,43 @@ class PocketApp {
     try {
       if (fs.statSync(target).isDirectory()) target = path.join(target, f.name);
     } catch {}
-    let body = null;
-    if (f.url) {
-      try {
-        const res = await fetch(f.url, { signal: AbortSignal.timeout(this.timeoutMs) });
-        if (res.status === 200) body = res.body;
-      } catch {}
-    }
-    if (!body) body = (await this._request("GET", this._filePath("shared", `releases/${f.path}`), { retry: true })).body;
     fs.mkdirSync(path.dirname(target), { recursive: true });
-    const tmp = tmpBeside(target);
-    const sha = crypto.createHash("sha256");
-    let size = 0;
-    const count = new Transform({
-      transform(chunk, _enc, done) {
-        sha.update(chunk);
-        size += chunk.length;
-        done(null, chunk);
-      },
-    });
-    try {
-      await pipeline(Readable.fromWeb(body), count, fs.createWriteStream(tmp));
-    } catch (e) {
-      fs.rmSync(tmp, { force: true });
-      throw new Unreachable(`The download of ${f.name} broke off: ${e.message}`, "Unreachable");
+    // Save a response body to target if size and sha256 match latest.json. A broken body throws a plain error.
+    const save = async (res) => {
+      const tmp = tmpBeside(target);
+      const sha = crypto.createHash("sha256");
+      let size = 0;
+      const count = new Transform({
+        transform(chunk, _enc, done) {
+          sha.update(chunk);
+          size += chunk.length;
+          done(null, chunk);
+        },
+      });
+      try {
+        await pipeline(Readable.fromWeb(res.body), count, fs.createWriteStream(tmp));
+      } catch (e) {
+        fs.rmSync(tmp, { force: true });
+        throw e;
+      }
+      if (size !== f.size || sha.digest("hex") !== f.sha256) {
+        fs.rmSync(tmp, { force: true });
+        throw new PocketError(`${f.name} did not match latest.json (size or sha256); refused.`, "ChecksumMismatch");
+      }
+      fs.renameSync(tmp, target);
+      return target;
+    };
+    if (f.url) {
+      // key-less first; anything but a mismatch falls back to the signed route
+      try {
+        const res = await fetchWatched(f.url, { method: "GET" }, this.timeoutMs);
+        if (res.status === 200) return await save(res);
+        await res.arrayBuffer();
+      } catch (e) {
+        if (e instanceof PocketError && e.code === "ChecksumMismatch") throw e;
+      }
     }
-    const got = sha.digest("hex");
-    if (size !== f.size || got !== f.sha256) {
-      fs.rmSync(tmp, { force: true });
-      throw new PocketError(`${f.name} did not match latest.json (size or sha256); refused.`, "ChecksumMismatch");
-    }
-    fs.renameSync(tmp, target);
-    return target;
+    return this._request("GET", this._filePath("shared", `releases/${f.path}`), { retry: true, read: save });
   }
 
   // ---------- notify, share, quota ----------
@@ -742,11 +840,11 @@ class PocketApp {
     if (tags != null) body.tags = tags;
     if (priority != null) body.priority = priority;
     if (click != null) body.click = click;
-    const res = await this._request("POST", "/_pocket/notify", {
+    return this._request("POST", "/_pocket/notify", {
       body: JSON.stringify(body),
       headers: { "content-type": "application/json" },
+      read: (r) => r.json(),
     });
-    return res.json();
   }
 
   async share(key, { expires = 86400, bucket = "shared", password, maxDownloads } = {}) {
@@ -754,16 +852,16 @@ class PocketApp {
     const body = { bucket, key, expires_s: expires };
     if (password) body.password = password;
     if (maxDownloads != null) body.max_downloads = maxDownloads;
-    const res = await this._request("POST", "/_pocket/share", {
+    return this._request("POST", "/_pocket/share", {
       body: JSON.stringify(body),
       headers: { "content-type": "application/json" },
+      read: (r) => r.json(),
     });
-    return res.json();
   }
 
   async quota() {
     await this._ensure("quota");
-    return (await this._request("GET", "/_pocket/quota", { retry: true })).json();
+    return this._request("GET", "/_pocket/quota", { retry: true, read: (r) => r.json() });
   }
 }
 

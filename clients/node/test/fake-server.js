@@ -79,6 +79,8 @@ class Fake {
     this.notifications = [];
     this.sentTimes = new Map(); // app -> [time]
     this.fails = [];
+    this.breaks = [];
+    this.slowMs = 0;
     this.moved = 0;
     this.requests = [];
     this.enrolls = 0;
@@ -148,6 +150,14 @@ class Fake {
       }
       if (Buffer.isBuffer(body)) {
         res.writeHead(status, { ...headers, "content-length": body.length });
+        // /_fake/break: send half the body, then drop the connection ("cut") or go quiet ("stall")
+        const brk = this.breaks.find((b) => b.times > 0 && `${req.method} ${rawPath}`.startsWith(b.route));
+        if (brk && body.length > 1) {
+          brk.times--;
+          res.write(body.subarray(0, body.length >> 1));
+          if (brk.mode === "cut") setTimeout(() => res.socket && res.socket.destroy(), 20);
+          return;
+        }
         return res.end(body);
       }
       const text = Buffer.from(JSON.stringify(body));
@@ -174,6 +184,11 @@ class Fake {
       const parts = [];
       let n = 0;
       req.on("data", (d) => {
+        if (this.slowMs) {
+          // /_fake/slow: a slow link, taking each chunk after a pause
+          req.pause();
+          setTimeout(() => req.resume(), this.slowMs);
+        }
         n += d.length;
         if (n <= limit) parts.push(d);
       });
@@ -631,6 +646,9 @@ class Fake {
       return { body: { ok: true } };
     }
     if (r === "POST /_fake/fail") return this.fails.push({ times: 1, ...b }), { body: { ok: true } };
+    // not in the contract's table: this library's own tests of timeouts and broken answers
+    if (r === "POST /_fake/break") return this.breaks.push({ times: 1, mode: "cut", ...b }), { body: { ok: true } };
+    if (r === "POST /_fake/slow") return (this.slowMs = b.ms || 0), { body: { ok: true } };
     if (r === "POST /_fake/moved") return (this.moved = b.times ?? 1), { body: { ok: true } };
     if (r === "POST /_fake/expire-changes") {
       const before = Number(b.before);
