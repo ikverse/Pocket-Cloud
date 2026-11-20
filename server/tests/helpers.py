@@ -120,6 +120,31 @@ class PocketServer:
             except ValueError:
                 return e.code, payload
 
+    def raw(self, enrollment, method, path, query="", body=b"", headers=None, sha=None, timeout=90):
+        """A signed v2 call with a raw body. Uploads (PUT) are signed with x-pocket-content-sha256 (sha, else the
+        body's real hash). Returns (status, response headers (lower-cased names), body bytes)."""
+        import hashlib
+        import http.client
+        from pocket import sigv4
+        h = {}
+        if method == "PUT":
+            digest = sha or hashlib.sha256(body).hexdigest()
+            h = sigv4.sign_pocket(method, path, query, None, enrollment["access_key"], enrollment["secret_key"],
+                                  body_hash=digest)
+            h["x-pocket-content-sha256"] = digest
+        else:
+            h = sigv4.sign_pocket(method, path, query, body, enrollment["access_key"], enrollment["secret_key"])
+        h.update(headers or {})
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=timeout)
+        try:
+            conn.request(method, path + ("?" + query if query else ""), body=body if body or method in ("PUT", "POST") else None,
+                         headers=h)
+            r = conn.getresponse()
+            data = r.read()
+            return r.status, {k.lower(): v for k, v in r.getheaders()}, data
+        finally:
+            conn.close()
+
     def client(self, enrollment, **cfg):
         return boto3.client(
             "s3", endpoint_url=enrollment["endpoint"], aws_access_key_id=enrollment["access_key"],

@@ -5,6 +5,7 @@ ApiError, which the HTTP layer turns into a 4xx answer.
 """
 
 import datetime
+import hashlib
 import json
 import os
 import shutil
@@ -12,8 +13,10 @@ import threading
 import time
 import uuid
 
-from . import undo
+from . import retention, undo
+from .changes import KEEP_DAYS
 from .gateway import Refuse
+from .push import NOTIFY_PER_DAY
 from .layout import DEVICE_UID, FAMILY, safe_key, space_dir, walk_files, remove_empty_dirs
 from .registry import RegistryError
 from .settings import GB
@@ -133,7 +136,7 @@ def overview(core):
     ]
     totals = {k: sum(r[k] or 0 for r in t.values()) for k in ("requests", "errors", "bytes_in", "bytes_out")}
     return {
-        "now": now, "started_at": core.started_at, "version": core.version,
+        "now": now, "started_at": core.started_at, "version": core.version, "features": list(core.FEATURES),
         "pool": pool,
         "files": sum(u["files"] for u in usage.values()),
         "apps_used": sum(u["int"] + u["sd"] for u in usage.values()),
@@ -305,6 +308,67 @@ def app_update(core, app_id, body):
     if restart:
         threading.Thread(target=core.restart_rclone_drained, daemon=True).start()
     return app_detail(core, app_id)
+
+
+def _latest_release(core, app_id):
+    """version and time of the app's releases/latest.json, or None."""
+    for storage in core.layout.storages():
+        p = core.layout.key_path(storage, app_id, "shared", "releases/latest.json")
+        if p and os.path.isfile(p):
+            try:
+                with open(p, encoding="utf-8") as f:
+                    doc = json.load(f)
+            except (OSError, ValueError):
+                return None
+            return {"version": doc.get("version"), "published": doc.get("published")} if isinstance(doc, dict) else None
+    return None
+
+
+def app_rules(core, app_id):
+    """GET /api/apps/<app>/rules: retention rules, publish and notify switches, change feed figures."""
+    app = _app_or_404(core, app_id)
+    return {
+        "retention": core.registry.retention_rules(app_id),
+        "publish": {"enabled": bool(app.get("publish")), "url": core.publish_url(app_id),
+                    "latest": _latest_release(core, app_id)},
+        "notify": {"enabled": bool(app.get("notify")), "topic": core.push.notify_topic(app_id),
+                   "sent_today": core.push.sent_today(app_id), "limit_day": NOTIFY_PER_DAY},
+        "changes": {"keep_days": KEEP_DAYS, "count": core.changes.count(app_id)},
+    }
+
+
+def app_rules_update(core, app_id, body):
+    """PATCH /api/apps/<app>/rules: any of retention (the whole list), publish.enabled, notify.enabled."""
+    _app_or_404(core, app_id)
+    if not isinstance(body, dict) or set(body) - {"retention", "publish", "notify"}:
+        raise bad("Send any of retention, publish and notify.")
+    rules = None
+    if "retention" in body:
+        try:
+            rules = retention.validate(body["retention"], app_id)
+        except retention.RuleError as e:
+            raise bad(str(e))
+    switches = {}
+    for name in ("publish", "notify"):
+        if name in body:
+            v = body[name]
+            if not isinstance(v, dict) or set(v) != {"enabled"} or not isinstance(v["enabled"], bool):
+                raise bad(f'{name} is {{"enabled": true}} or {{"enabled": false}}.')
+            switches[name] = 1 if v["enabled"] else 0
+    if rules is not None:
+        core.registry.set_retention_rules(app_id, rules)
+        core.log(f"retention rules of {app_id} set: " + (", ".join(
+            f"{r['bucket']} {r['prefix']} keep_last={r['keep_last']} keep_days={r['keep_days']}" for r in rules) or "none"))
+    if switches:
+        before = core.registry.app(app_id)
+        core.registry.update_app(app_id, **switches)
+        for name, on in switches.items():
+            if bool(before.get(name)) != bool(on):
+                what = {"publish": "Publish folder", "notify": "Notifications"}[name]
+                text = f"{what} switched {'on' if on else 'off'} for {app_id}."
+                core.log(text)
+                core.stats.event("app_" + name, app_id, "info", text)
+    return app_rules(core, app_id)
 
 
 def app_create(core, body):
@@ -523,6 +587,7 @@ def file_upload(core, app_id, space, key, stream, length):
     os.makedirs(staging, exist_ok=True)
     tmp = os.path.join(staging, uuid.uuid4().hex)
     got = 0
+    md5 = hashlib.md5()
     try:
         with open(tmp, "wb") as f:
             while got < length:
@@ -530,6 +595,7 @@ def file_upload(core, app_id, space, key, stream, length):
                 if not b:
                     raise bad("The upload was cut off.")
                 f.write(b)
+                md5.update(b)
                 got += len(b)
             f.flush()
             os.fsync(f.fileno())
@@ -545,8 +611,12 @@ def file_upload(core, app_id, space, key, stream, length):
         if os.path.exists(tmp):
             os.remove(tmp)
     core.usage.add(app_id, space, storage, got)
+    etag = '"%s"' % md5.hexdigest()
+    st = os.stat(dst)
+    core.meta.set(app_id, space, key, st.st_size, st.st_mtime_ns, etag)
     keys, prefix = _views(core, app_id, space)
     core.rclone.forget(keys, ["/".join([prefix] + key.split("/")[:-1])])
+    core.record_change(app_id, space, key, "put", "panel", None, got, etag)
     core.notify_change(app_id)
     return {"ok": True, "key": key, "size": got, "storage": storage}
 
@@ -561,8 +631,11 @@ def file_delete(core, app_id, space, key):
         os.remove(p)
         remove_empty_dirs(os.path.dirname(p), core.layout.space_path(storage, app_id, space))
         core.usage.add(app_id, space, storage, -sz)
+    core.meta.delete(app_id, space, key)
     keys, prefix = _views(core, app_id, space)
     core.rclone.forget(keys, ["/".join([prefix] + key.split("/")[:-1])])
+    if kept:
+        core.record_change(app_id, space, key, "delete", "panel")
     core.notify_change(app_id)
     return {"ok": True}
 
@@ -632,9 +705,13 @@ def undo_restore(core, body):
     dst = core.layout.key_path(storage, app_id, space, key)
     os.makedirs(os.path.dirname(dst), exist_ok=True)
     os.replace(src, dst)
-    core.usage.add(app_id, space, storage, os.path.getsize(dst))
+    st = os.stat(dst)
+    core.usage.add(app_id, space, storage, st.st_size)
+    core.meta.delete(app_id, space, key)
+    etag = core.meta.etag(app_id, space, key, dst, st)
     keys, prefix = _views(core, app_id, space)
     core.rclone.forget(keys, ["/".join([prefix] + key.split("/")[:-1])])
+    core.record_change(app_id, space, key, "put", "undo", None, st.st_size, etag)
     core.notify_change(app_id)
     return {"ok": True, "app": app_id, "space": space, "key": key}
 
@@ -647,6 +724,7 @@ JOB_FNS = {
     "undo-cleanup": ("Undo cleanup", lambda c: c.jobs.undo_cleanup, "Removes deleted files kept longer than the undo period"),
     "integrity": ("Integrity check", lambda c: c.jobs.integrity, "Reads every file on the SD card and compares checksums"),
     "log-cleanup": ("Log cleanup", lambda c: c.jobs.purge, "Removes request logs older than the log period"),
+    "retention": ("Retention rules", lambda c: c.jobs.retention, "Removes old files by each app's retention rules"),
 }
 WEEKDAYS = ["Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays", "Sundays"]
 

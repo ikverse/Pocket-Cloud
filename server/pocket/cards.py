@@ -774,10 +774,13 @@ class Cards:
             os.remove(p)
             core.usage.add(app, space, s, -sz)
         core.jobs._copy_to(src, dst, staging=os.path.join(core.layout.root("int"), "_staging"))
-        core.usage.add(app, space, "int", os.path.getsize(dst))
+        st = os.stat(dst)
+        core.usage.add(app, space, "int", st.st_size)
         devs = core.registry.devices(app)
         keys = [d["access_key"] for d in devs if space == "shared" or "device:" + d["uid"] == space]
         core.rclone.forget(keys, ["/".join(["shared" if space == "shared" else "device"] + key.split("/")[:-1])])
+        core.meta.delete(app, space, key)
+        core.record_change(app, space, key, "put", "card", None, st.st_size, core.meta.etag(app, space, key, dst, st))
         return {"restored": True}
 
     # ------------------------------------------------------------------ files put aside on the active card
@@ -824,6 +827,9 @@ class Cards:
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             os.replace(path, dst)
             moved += 1
+            st = os.stat(dst)
+            core.meta.delete(to, "shared", key)
+            core.record_change(to, "shared", key, "put", "card", None, st.st_size, core.meta.etag(to, "shared", key, dst, st))
         shutil.rmtree(d, ignore_errors=True)
         remove_empty_dirs(os.path.dirname(d), core.layout.unassigned_root())
         core.usage.scan()

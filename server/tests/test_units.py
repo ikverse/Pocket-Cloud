@@ -212,5 +212,99 @@ class SettingsTests(unittest.TestCase):
             shutil.rmtree(d, ignore_errors=True)
 
 
+class V2ContractTests(unittest.TestCase):
+    """docs/app-api.md section 12 and the pieces of v2 that need no server."""
+
+    KEY, SECRET, DATE = "AKTEST0000000001", "secret-for-tests-only", 1795000000
+
+    def test_vectors(self):
+        sign = lambda m, p, q, b, **kw: sigv4.sign_pocket(m, p, q, b, self.KEY, self.SECRET, now=self.DATE, **kw)["x-pocket-sign"]
+        self.assertEqual(sign("GET", "/_pocket/quota", "", b""),
+                         "d872ac21f923208dc0ca0344d8a3fe488e4b717b656d7328149e89799ac06b71")
+        put = "015bd2b75bedd7fbc3a9ce49abd670c4ff7a1ef6d8f96fd795cfbe5d8995c04f"
+        path = "/_pocket/files/shared/notes/hello%20world.txt"
+        self.assertEqual(sign("PUT", path, "", b"hello"), put)
+        digest = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        self.assertEqual(sign("PUT", path, "", None, body_hash=digest), put, "signed from the header's hash")
+        self.assertEqual(sign("GET", "/_pocket/list", "bucket=shared&prefix=notes%2F&limit=2", b""),
+                         "0884bcb1271e92c9f16e501b09205689aacc6e65c212461a42ffeb102f6f14d6")
+        headers = {"x-pocket-date": str(self.DATE), "x-pocket-sign": put}
+        self.assertEqual(sigv4.verify_pocket("PUT", path, "", headers, b"", self.SECRET, now=self.DATE, body_hash=digest),
+                         (True, ""))
+        self.assertFalse(sigv4.verify_pocket("PUT", path, "", headers, b"", self.SECRET, now=self.DATE, body_hash="0" * 64)[0])
+
+    def test_keys(self):
+        from pocket.files import check_key
+        from pocket.refuse import Refuse
+        for good in ("a", "notes/2026/a.txt", "ünïcode/ß.txt", "a" * 1024):
+            self.assertEqual(check_key(good), good)
+        for bad in ("", "/a", "a/", "a//b", "./a", "a/../b", "a\x00b", "a" * 1025, "é" * 513):
+            with self.assertRaises(Refuse, msg=repr(bad)):
+                check_key(bad)
+
+    def test_range(self):
+        from pocket.files import _parse_range
+        from pocket.refuse import Refuse
+        self.assertEqual(_parse_range("bytes=0-4", 10), (0, 4))
+        self.assertEqual(_parse_range("bytes=5-", 10), (5, 9))
+        self.assertEqual(_parse_range("bytes=-3", 10), (7, 9))
+        self.assertEqual(_parse_range("bytes=8-100", 10), (8, 9))
+        self.assertIsNone(_parse_range("bytes=0-1,4-5", 10))
+        self.assertIsNone(_parse_range(None, 10))
+        for bad in ("bytes=10-", "bytes=5-2"):
+            with self.assertRaises(Refuse):
+                _parse_range(bad, 10)
+
+    def test_retention_rules_are_checked(self):
+        from pocket.layout import FAMILY
+        from pocket.retention import RuleError, protected, validate
+        ok = validate([{"bucket": "shared", "prefix": "backups/", "keep_last": 7}], "egx")
+        self.assertEqual(ok, [{"bucket": "shared", "prefix": "backups/", "keep_last": 7, "keep_days": None}])
+        self.assertEqual(validate([{"bucket": "family", "prefix": "x/", "keep_days": 3}], FAMILY)[0]["bucket"], "family")
+        for i, bad in enumerate(([{"bucket": "shared", "prefix": "", "keep_last": 1}],
+                                 [{"bucket": "shared", "prefix": "a/"}],
+                                 [{"bucket": "family", "prefix": "a/", "keep_last": 1}],
+                                 [{"bucket": "shared", "prefix": "a/", "keep_last": 0}],
+                                 [{"bucket": "shared", "prefix": "a/", "keep_days": 3651}],
+                                 [{"bucket": "shared", "prefix": "a/", "keep_last": True}],
+                                 [{"bucket": "shared", "prefix": f"p{n}/", "keep_last": 1} for n in range(21)])):
+            with self.assertRaises(RuleError, msg=i):
+                validate(bad, "egx")
+        with self.assertRaisesRegex(RuleError, "^Rule 2:"):
+            validate([{"bucket": "shared", "prefix": "a/", "keep_last": 1}, {"bucket": "shared", "prefix": "a/", "keep_last": 2}], "egx")
+        self.assertTrue(protected("releases/latest.json"))
+        self.assertTrue(protected("releases/latest-mac.yml"))
+        self.assertFalse(protected("releases/1.0/latest.json"))
+        self.assertFalse(protected("backups/latest.json"))
+
+    def test_registry_migrates_old_database(self):
+        import sqlite3
+        d = tempfile.mkdtemp()
+        try:
+            con = sqlite3.connect(os.path.join(d, "registry.db"))
+            con.executescript("""
+                CREATE TABLE apps (id TEXT PRIMARY KEY, name TEXT NOT NULL, notes TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'active', alloc_bytes INTEGER NOT NULL, warn_pct INTEGER NOT NULL,
+                    at_limit TEXT NOT NULL, move_days INTEGER NOT NULL, device_cap_bytes INTEGER,
+                    created_at REAL NOT NULL, created_by TEXT NOT NULL);
+                INSERT INTO apps (id, name, alloc_bytes, warn_pct, at_limit, move_days, created_at, created_by)
+                    VALUES ('old-app', 'old-app', 1, 80, 'refuse', 7, 0, 'x');""")
+            con.commit()
+            con.close()
+            r = Registry(d)
+            a = r.app("old-app")
+            self.assertEqual((a["publish"], a["notify"], a["family"]), (0, 0, 0))
+            self.assertEqual(r.retention_rules("old-app"), [])
+            r.set_retention_rules("old-app", [{"bucket": "shared", "prefix": "b/", "keep_last": 2, "keep_days": None}])
+            r.retention_ran("old-app", "shared", "b/", 5.0, 1, 10)
+            r.set_retention_rules("old-app", [{"bucket": "shared", "prefix": "b/", "keep_last": 3, "keep_days": None}])
+            self.assertEqual(r.retention_rules("old-app")[0]["last_removed"], 1, "kept across an edit")
+            r.update_app("old-app", publish=1)
+            self.assertEqual(r.app("old-app")["publish"], 1)
+            r.close()
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()

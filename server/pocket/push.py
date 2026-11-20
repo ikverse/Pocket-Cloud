@@ -21,7 +21,9 @@ There is no authentication: only the tailnet can reach the port, and a spoofed m
 make a client look for changes.
 """
 
+import collections
 import json
+import math
 import queue
 import re
 import secrets
@@ -41,6 +43,14 @@ KEEP_N = 200                 # ... and at most this many per topic
 KEEPALIVE_S = 45             # an idle stream gets a keepalive line this often, so dead clients are noticed
 MAX_BODY = 4096
 ID_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+NOTIFY_PER_MIN = 10          # app notifications (POST /_pocket/notify), rolling windows per app
+NOTIFY_PER_DAY = 200
+
+
+class RateLimited(Exception):
+    def __init__(self, retry_after):
+        super().__init__(f"retry after {retry_after} s")
+        self.retry_after = retry_after
 
 
 class Hub:
@@ -51,7 +61,7 @@ class Hub:
         self._messages = {}          # topic -> [message, ...] oldest first
         self._subs = {}              # topic -> set of queues
 
-    def publish(self, topic, message, title=None, tags=None, now=None):
+    def publish(self, topic, message, title=None, tags=None, now=None, priority=None, click=None, extra=None):
         now = int(now or time.time())
         msg = {"id": "".join(secrets.choice(ID_CHARS) for _ in range(12)), "time": now, "expires": now + KEEP_S,
                "event": "message", "topic": topic, "message": message}
@@ -59,6 +69,11 @@ class Hub:
             msg["title"] = title
         if tags:
             msg["tags"] = tags
+        if priority:
+            msg["priority"] = priority
+        if click:
+            msg["click"] = click
+        msg.update(extra or {})
         with self._lock:
             lst = self._messages.setdefault(topic, [])
             lst.append(msg)
@@ -243,6 +258,7 @@ class Push:
         self.restarts = 0
         self._lock = threading.Lock()
         self._pending = {}                          # app -> [changes, timer]
+        self._notified = {}                         # app -> times of notifications sent in the last day
         self._server_lock = threading.Lock()
         self._delay = 0.0                           # back-off while the listening addresses can't be opened
         self._next_try = 0.0
@@ -305,6 +321,36 @@ class Push:
         self.hub.publish(self.topic(app_id), body, title=f"{app_id} changed", tags=["pocket"])
         self.sent += 1
         return True
+
+    # ---- app notifications for people (POST /_pocket/notify): their own topic, rate-limited ----
+    @staticmethod
+    def notify_topic(app_id):
+        return f"pocket-{app_id}-notify"
+
+    def notify(self, app_id, message, device_name=None, title=None, tags=None, priority=3, click=None, now=None):
+        """Publish a notification on the app's notify topic. Returns the message, or raises RateLimited."""
+        now = now or time.time()
+        with self._lock:
+            sent = self._notified.setdefault(app_id, collections.deque())
+            while sent and sent[0] <= now - 86400:
+                sent.popleft()
+            waits = []
+            minute = [t for t in sent if t > now - 60]
+            if len(minute) >= NOTIFY_PER_MIN:
+                waits.append(minute[-NOTIFY_PER_MIN] + 60 - now)
+            if len(sent) >= NOTIFY_PER_DAY:
+                waits.append(sent[-NOTIFY_PER_DAY] + 86400 - now)
+            if waits:
+                raise RateLimited(max(1, math.ceil(max(waits))))
+            sent.append(now)
+        extra = {"x-pocket-device": device_name} if device_name else None
+        return self.hub.publish(self.notify_topic(app_id), message, title=title, tags=tags, now=now,
+                                priority=priority, click=click, extra=extra)
+
+    def sent_today(self, app_id, now=None):
+        now = now or time.time()
+        with self._lock:
+            return sum(1 for t in self._notified.get(app_id, ()) if t > now - 86400)
 
     def healthy(self):
         if not self.servers:

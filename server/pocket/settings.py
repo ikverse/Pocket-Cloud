@@ -75,6 +75,9 @@ DEFAULTS = {
         "enabled": False,        # switched on by setup.sh the first time; see push.py
         "port": 2586,
     },
+    "publish": {
+        "allow_loopback": False, # the key-less publish folder answers on the Tailscale address only; tests open 127.0.0.1
+    },
     "sd": {
         "search": "",            # where cards appear, e.g. /storage/*-*/Android/data/com.termux/files ("" = sd_root only)
         "poll_s": 10,

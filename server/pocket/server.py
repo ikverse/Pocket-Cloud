@@ -10,6 +10,7 @@ import datetime
 import hmac
 import ipaddress
 import os
+import re
 import signal
 import sys
 import threading
@@ -17,13 +18,15 @@ import time
 
 from . import __version__
 from .cards import Cards
-from .gateway import Refuse, serve
+from .changes import KEEP_DAYS, Changes
+from .filemeta import FileMeta
+from .gateway import Refuse, is_tailscale, serve
 from .health import Health, notify
 from .jobs import JobBusy, Jobs
 from .layout import FAMILY, TEMP_PREFIX, Layout, walk_files
 from .panel import Admin
 from .panel import serve as panel_serve
-from .push import Push
+from .push import Push, RateLimited
 from . import share as sharemod
 from .rclone import Rclone, write_config, write_flags
 from .registry import Registry, RegistryError
@@ -37,10 +40,18 @@ JOB_EARLY = "Early move"
 JOB_UNDO = "Undo cleanup"
 JOB_LOGS = "Log cleanup"
 JOB_INTEGRITY = "Integrity check"
+JOB_RETENTION = "Retention rules"
+
+# What this server can do (GET /_pocket/health, /_pocket/app, the control panel): see docs/app-api.md section 2
+FEATURES = ("quota", "conflicts", "mirror-report", "share", "push",
+            "files", "move", "changes", "publish", "retention", "notify")
+KEY_LOCKS = 64
+_TAG = re.compile(r"^[a-z0-9_-]{1,40}$")
 
 
 class Core:
     version = __version__
+    FEATURES = FEATURES
 
     def __init__(self, state_dir, overrides=None, echo=True):
         self.state_dir = os.path.abspath(state_dir)
@@ -57,11 +68,16 @@ class Core:
         self.registry = Registry(self.state_dir)
         self.registry.ensure_family(s.get("family.alloc_gb") * GB, sum(s.pool_bytes()), s.get("new_apps"))
         self.stats = Stats(self.state_dir, notify=notify)
+        self.changes = Changes(self.state_dir)
+        self.meta = FileMeta(self.state_dir)
+        self._key_locks = [threading.Lock() for _ in range(KEY_LOCKS)]
         self.usage = Usage(self.layout, self.registry, s)
         self.rclone = Rclone(s, self.state_dir, self.log)
         self.jobs = Jobs(self.layout, self.registry, self.usage, self.stats, self.rclone, s, self.log)
         self.health = Health(self)
         self.jobs.cool = self.health.too_hot      # nightly jobs pause while the phone is too hot
+        self.jobs.core = self                     # retention rules work through the core (undo, feed, push)
+        self.jobs.changes = self.changes          # pruned with the logs
         ts = next((a for a in s.get("listen") if _is_tailscale(a)), None)
         self.push = Push(s, self.state_dir, self.log, address=ts or "127.0.0.1")
         self.tunnel = sharemod.Tunnel(s, self.state_dir, self.log)
@@ -142,6 +158,8 @@ class Core:
         self.rclone.stop()
         self.registry.close()
         self.stats.close()
+        self.changes.close()
+        self.meta.close()
 
     def clean_leftovers(self):
         """After a crash or power cut: remove half-written uploads and half-copied files. Nothing is running yet,
@@ -239,6 +257,93 @@ class Core:
                 self.push.changed(a["id"])
         else:
             self.push.changed(app_id)
+
+    # ---- the change feed (changes.py): every put, delete and move, wherever apps are told of changes ----
+    def record_change(self, owner_id, space, key, kind, source, device=None, size=None, etag=None, from_=None):
+        """from_: (owner app, space, key) before a move. A feed that can't be written never fails the write."""
+        try:
+            self.changes.record(owner_id, space, key, kind, source, device, size, etag, from_)
+        except Exception as e:
+            self.log(f"change feed: could not record {kind} {owner_id} {space} {key}: {type(e).__name__}: {e}")
+
+    def forget(self, owner_id, space, keys):
+        """rclone forgets its cached listings of the keys' folders, in every view that shows them."""
+        if owner_id == FAMILY:
+            members = {a["id"] for a in self.registry.members()}
+            access, top = [d["access_key"] for d in self.registry.devices() if d["app_id"] in members], "family"
+        elif space == "shared":
+            access, top = [d["access_key"] for d in self.registry.devices(owner_id)], "shared"
+        else:
+            access, top = [d["access_key"] for d in self.registry.devices(owner_id) if "device:" + d["uid"] == space], "device"
+        if access:
+            self.rclone.forget(access, ["/".join([top] + k.split("/")[:-1]) for k in keys])
+
+    @contextlib.contextmanager
+    def key_lock(self, *ids):
+        """Hold the locks of one or two (app, space, key) for a check-then-change on the plain file routes."""
+        locks = sorted({hash(i) % KEY_LOCKS for i in ids})
+        for n in locks:
+            self._key_locks[n].acquire()
+        try:
+            yield
+        finally:
+            for n in reversed(locks):
+                self._key_locks[n].release()
+
+    # ---- GET /_pocket/app: what is switched on for this app ----
+    def tailscale_address(self):
+        return next((a for a in self.settings.get("listen") if is_tailscale(a)), None)
+
+    def publish_url(self, app_id):
+        host = self.tailscale_address() or ("127.0.0.1" if self.settings.get("publish.allow_loopback") else None)
+        return f"http://{host}:{self.settings.get('storage_port')}/_pocket/pub/{app_id}/" if host else None
+
+    def notify_url(self):
+        ts = self.tailscale_address()
+        return self.push.url(ts) if ts else None
+
+    def app_info(self, app, dev):
+        ts = self.tailscale_address()
+        return {
+            "app": app["id"], "device_id": dev["uid"],
+            "buckets": ["shared", "device"] + (["family"] if app.get("family") else []),
+            "features": list(FEATURES),
+            "publish": {"enabled": bool(app.get("publish")), "url": self.publish_url(app["id"])},
+            "notify": {"enabled": bool(app.get("notify")) and self.push.enabled,
+                       "topic": self.push.notify_topic(app["id"]), "url": self.notify_url()},
+            "push": self.push.info(app["id"], host=ts or "127.0.0.1"),
+            "retention": [{k: r[k] for k in ("bucket", "prefix", "keep_last", "keep_days")}
+                          for r in self.registry.retention_rules(app["id"])],
+            "changes": {"keep_days": KEEP_DAYS},
+            "read_only": bool(self.settings.get("server.read_only")),
+        }
+
+    # ---- POST /_pocket/notify: a notification for people, on the app's own topic ----
+    def notify_app(self, app, dev, body):
+        if not self.push.enabled:
+            raise Refuse(403, "FeatureOff", "The push server is switched off in the Pocket Cloud control panel.")
+        if not app.get("notify"):
+            raise Refuse(403, "FeatureOff", "Notifications are switched off for this app in the Pocket Cloud control panel.")
+        msg, title, tags = body.get("message"), body.get("title"), body.get("tags")
+        priority, click = body.get("priority", 3), body.get("click")
+        if not isinstance(msg, str) or not 1 <= len(msg) <= 4096:
+            raise Refuse(400, "BadRequest", "message is 1-4096 characters.")
+        if title is not None and (not isinstance(title, str) or len(title) > 200):
+            raise Refuse(400, "BadRequest", "title is up to 200 characters.")
+        if tags is not None and (not isinstance(tags, list) or len(tags) > 10 or not all(
+                isinstance(t, str) and _TAG.match(t) for t in tags)):
+            raise Refuse(400, "BadRequest", "tags is a list of up to 10 names of a-z, 0-9, _ and -, up to 40 characters each.")
+        if isinstance(priority, bool) or not isinstance(priority, int) or not 1 <= priority <= 5:
+            raise Refuse(400, "BadRequest", "priority is 1 to 5.")
+        if click is not None and (not isinstance(click, str) or not click or len(click) > 2000):
+            raise Refuse(400, "BadRequest", "click is a URL of up to 2000 characters.")
+        try:
+            sent = self.push.notify(app["id"], msg, device_name=dev["name"], title=title or None, tags=tags or None,
+                                    priority=priority, click=click)
+        except RateLimited as e:
+            raise Refuse(429, "RateLimited", "Too many notifications from this app (10 a minute, 200 a day).",
+                         {"Retry-After": str(e.retry_after)})
+        return {"ok": True, "id": sent["id"], "topic": sent["topic"]}
 
     # ---- share links (share.py): the listener, the tunnel, and the device endpoints ----
     def set_share(self, enabled):
@@ -569,6 +674,7 @@ class Core:
         for name in names:
             try:
                 if name == "nightly":
+                    self.jobs.run(JOB_RETENTION, self.jobs.retention)      # first, so the copy leaves out what it removed
                     self.jobs.run(JOB_COPY, self.jobs.copy)
                     self.cards.refresh_active()
                     self.jobs.run(JOB_MOVE, self.jobs.move)
@@ -595,11 +701,7 @@ class Core:
         self.stats.storage_snapshot(self.usage.pool(), self.usage.free("int"), self.usage.free("sd"), per_app)
 
 
-def _is_tailscale(addr):
-    try:
-        return ipaddress.ip_address(addr) in ipaddress.ip_network("100.64.0.0/10")
-    except ValueError:
-        return False
+_is_tailscale = is_tailscale
 
 
 def _alt_address(addresses, ip):

@@ -56,6 +56,18 @@ CREATE TABLE IF NOT EXISTS shares (
     max_downloads INTEGER,
     downloads INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS retention_rules (
+    app_id TEXT NOT NULL,
+    pos INTEGER NOT NULL,
+    bucket TEXT NOT NULL,
+    prefix TEXT NOT NULL,
+    keep_last INTEGER,
+    keep_days INTEGER,
+    last_run REAL,
+    last_removed INTEGER,
+    last_freed INTEGER,
+    PRIMARY KEY (app_id, pos)
+);
 """
 
 
@@ -102,7 +114,9 @@ class Registry:
     def _migrate(self):
         """Columns added after the first release, for databases made before them."""
         for table, column, decl in (("apps", "device_reserve_bytes", "INTEGER"), ("devices", "ip_alt", "TEXT"),
-                                    ("apps", "family", "INTEGER NOT NULL DEFAULT 0")):
+                                    ("apps", "family", "INTEGER NOT NULL DEFAULT 0"),
+                                    ("apps", "publish", "INTEGER NOT NULL DEFAULT 0"),
+                                    ("apps", "notify", "INTEGER NOT NULL DEFAULT 0")):
             have = {r["name"] for r in self._con.execute(f"PRAGMA table_info({table})")}
             if column not in have:
                 self._con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
@@ -228,15 +242,16 @@ class Registry:
     def replace_all(self, apps, devices):
         """Replace every app and device (restoring a settings backup)."""
         app_cols = ("id", "name", "notes", "status", "alloc_bytes", "warn_pct", "at_limit", "move_days",
-                    "device_cap_bytes", "device_reserve_bytes", "family", "created_at", "created_by")
+                    "device_cap_bytes", "device_reserve_bytes", "family", "created_at", "created_by", "publish", "notify")
         dev_cols = ("app_id", "uid", "name", "ip", "access_key", "secret", "created_at", "last_seen", "blocked", "ip_alt")
+        flags = ("family", "publish", "notify")       # absent from older backups: off
         with self._lock:
             try:
                 self._con.execute("BEGIN")
                 self._con.execute("DELETE FROM devices")
                 self._con.execute("DELETE FROM apps")
                 self._con.executemany(f"INSERT INTO apps ({','.join(app_cols)}) VALUES ({','.join('?' * len(app_cols))})",
-                                      [tuple(a.get(c) for c in app_cols) for a in apps])
+                                      [tuple((a.get(c) or 0) if c in flags else a.get(c) for c in app_cols) for a in apps])
                 self._con.executemany(f"INSERT INTO devices ({','.join(dev_cols)}) VALUES ({','.join('?' * len(dev_cols))})",
                                       [tuple(d.get(c) for c in dev_cols) for d in devices])
                 self._con.execute("COMMIT")
@@ -247,7 +262,8 @@ class Registry:
             self._changed()
 
     def update_app(self, app_id, **fields):
-        allowed = {"name", "notes", "status", "warn_pct", "at_limit", "move_days", "device_cap_bytes", "device_reserve_bytes", "family"}
+        allowed = {"name", "notes", "status", "warn_pct", "at_limit", "move_days", "device_cap_bytes", "device_reserve_bytes", "family",
+                   "publish", "notify"}
         bad = set(fields) - allowed
         if bad:
             raise ValueError("can't change " + ", ".join(sorted(bad)))
@@ -299,9 +315,38 @@ class Registry:
     def remove_app(self, app_id):
         with self._lock:
             self._con.execute("DELETE FROM shares WHERE app_id=?", (app_id,))
+            self._con.execute("DELETE FROM retention_rules WHERE app_id=?", (app_id,))
             self._con.execute("DELETE FROM devices WHERE app_id=?", (app_id,))
             self._con.execute("DELETE FROM apps WHERE id=?", (app_id,))
             self._changed()
+
+    # ---- retention rules (retention.py), set in the control panel ----
+    def retention_rules(self, app_id):
+        with self._lock:
+            rows = self._con.execute("SELECT * FROM retention_rules WHERE app_id=? ORDER BY pos", (app_id,))
+            return [{k: r[k] for k in ("bucket", "prefix", "keep_last", "keep_days", "last_run", "last_removed", "last_freed")}
+                    for r in rows]
+
+    def set_retention_rules(self, app_id, rules):
+        """Replace the app's rules (already checked). A rule kept with the same bucket and prefix keeps its
+        last run's figures."""
+        with self._lock:
+            old = {(r["bucket"], r["prefix"]): r for r in self.retention_rules(app_id)}
+            self._con.execute("DELETE FROM retention_rules WHERE app_id=?", (app_id,))
+            for i, r in enumerate(rules):
+                o = old.get((r["bucket"], r["prefix"]), {})
+                self._con.execute(
+                    "INSERT INTO retention_rules (app_id, pos, bucket, prefix, keep_last, keep_days, last_run, last_removed,"
+                    " last_freed) VALUES (?,?,?,?,?,?,?,?,?)",
+                    (app_id, i, r["bucket"], r["prefix"], r["keep_last"], r["keep_days"], o.get("last_run"),
+                     o.get("last_removed"), o.get("last_freed")))
+            self._con.commit()
+
+    def retention_ran(self, app_id, bucket, prefix, ts, removed, freed):
+        with self._lock:
+            self._con.execute("UPDATE retention_rules SET last_run=?, last_removed=?, last_freed=? WHERE app_id=? AND"
+                              " bucket=? AND prefix=?", (ts, removed, freed, app_id, bucket, prefix))
+            self._con.commit()
 
     # ---- share links (share.py) ----
     def add_share(self, app_id, uid, space, key, expires, password_hash=None, max_downloads=None, now=None):
