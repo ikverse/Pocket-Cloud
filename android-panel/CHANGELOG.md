@@ -5,6 +5,18 @@ the GitHub release, and refuses to publish a version that has no entry.
 
 ---
 
+## [0.3.0] — 2026-11-21
+
+- New look and a new icon: the cobalt "PC" monogram, and a redesign around Home, Apps, Files, Phone and
+  Settings, matching the new web control panel.
+- Home shows whether the phone is healthy, how full it is, what each app did today and anything that needs
+  you; the phone's storage, SD cards, nightly jobs and logs now live together under Phone.
+- Each app keeps its own colour, the same in the app and in the web panel.
+- New on an app's page (with a Pocket Cloud server v2): "Keep only recent files" rules that the nightly
+  job applies, a switch for the publish folder that devices read updates from, a switch that lets the app
+  send its own notifications, and how many changes its change feed holds.
+- No more white flash when the app opens in dark mode.
+
 ## [0.2.0] — 2026-10-12
 
 - The app can now update itself: Settings › About checks the Pocket Cloud releases on GitHub,
