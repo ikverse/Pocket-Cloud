@@ -237,7 +237,7 @@ fun VaultScreen(browse: BrowseModel, onBack: () -> Unit, onOpen: (Vault) -> Unit
         if (vaults.isEmpty()) PCard { EmptyState("No vaults yet", "Make one here, or turn a folder that rclone already encrypts into one from its menu in Files.") }
         else PCard {
             Divided(vaults) { v ->
-                val open = remember(v.id, tick) { g.vaults.hasPassword(v) }
+                val open = remember(v, tick) { g.vaults.hasPassword(v) }
                 ItemRow(onClick = { if (open) onOpen(v) else unlocking = v }, leading = { FileTile(v.name, true, vault = true) }, trailing = {
                     if (open) Badge("Open on this phone", Tone.ACCENT) else PlainButton("Unlock", { unlocking = v }, small = true)
                 }) {
@@ -257,7 +257,7 @@ fun VaultScreen(browse: BrowseModel, onBack: () -> Unit, onOpen: (Vault) -> Unit
 
     unlocking?.let { v ->
         PasswordDialog("Unlock ${v.name}", askName = false, confirmPassword = false, confirm = "Unlock",
-            onDismiss = { unlocking = null }, onConfirm = { _, pw -> browse.unlock(v, pw); tick++ })
+            onDismiss = { unlocking = null }, onConfirm = { _, pw -> browse.unlock(v, pw) { tick++ } })
     }
     if (creating) PasswordDialog("New vault in My Drive", askName = true, confirmPassword = true, confirm = "Create",
         note = "Files in a vault are encrypted on this phone before they are uploaded. If you lose the password, the files can't be recovered.",

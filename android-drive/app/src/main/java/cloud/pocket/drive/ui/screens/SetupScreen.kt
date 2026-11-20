@@ -1,11 +1,9 @@
 package cloud.pocket.drive.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -20,7 +18,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -32,21 +29,21 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import cloud.pocket.drive.data.AppGraph
 import cloud.pocket.drive.data.Remote
 import cloud.pocket.drive.data.SHARED
 import cloud.pocket.drive.data.Settings
+import cloud.pocket.drive.ui.components.IconTile
+import cloud.pocket.drive.ui.components.ItemRow
 import cloud.pocket.drive.ui.components.Monogram
+import cloud.pocket.drive.ui.components.PCard
+import cloud.pocket.drive.ui.components.PlainButton
+import cloud.pocket.drive.ui.components.SectionHeader
+import cloud.pocket.drive.ui.components.TwoLine
 import cloud.pocket.drive.ui.components.PrimaryButton
 import cloud.pocket.drive.ui.theme.PocketTheme
 import kotlinx.coroutines.launch
@@ -97,7 +94,6 @@ fun SetupScreen(g: AppGraph, onDone: () -> Unit) {
         return
     }
     val c = MaterialTheme.colorScheme
-    val line = c.outlineVariant
     Box(Modifier.fillMaxSize().background(c.background), contentAlignment = Alignment.TopCenter) {
         Column(
             Modifier.widthIn(max = 520.dp).fillMaxSize().safeDrawingPadding().imePadding().verticalScroll(rememberScrollState())
@@ -111,34 +107,28 @@ fun SetupScreen(g: AppGraph, onDone: () -> Unit) {
                     color = c.onSurfaceVariant)
             }
             val ready = secret.isNotBlank() && address.isNotBlank()
-            Box(
-                Modifier.fillMaxWidth().aspectRatio(if (ready) 2.4f else 1.15f).clip(RoundedCornerShape(26.dp)).background(c.surfaceContainerLow)
-                    .drawBehind {
-                        drawRoundRect(line, cornerRadius = CornerRadius(26.dp.toPx()),
-                            style = Stroke(width = 2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10.dp.toPx(), 7.dp.toPx()))))
-                    }
-                    .clickable { scanning = true },
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Icon(Icons.Filled.QrCodeScanner, null, Modifier.size(44.dp), tint = c.primary)
-                    Text(if (ready) "Scan again" else "Scan the QR code", style = MaterialTheme.typography.titleSmall)
-                    Text("Tap to open the camera", style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
+            // Two ways in, side by side in weight: scan the panel's code, or type the same details.
+            PCard(onClick = { scanning = true }) {
+                ItemRow(leading = { IconTile(Icons.Filled.QrCodeScanner, c.primaryContainer, c.onPrimaryContainer) }, trailing = {
+                    PlainButton(if (ready) "Scan again" else "Scan", { scanning = true }, small = true)
+                }) {
+                    TwoLine("Scan the QR code", "Fills in the address and secret for you")
                 }
             }
-            Text("or type it in", style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant, textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(address, { address = it }, label = { Text("Address") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                supportingText = { Text("For example pocket:9000. Used as ${Settings.normalizeAddress(address)}") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next))
-            OutlinedTextField(secret, { secret = it }, label = { Text("Enrollment secret") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                supportingText = { Text("From the control panel: Settings, Machine setup. The QR code fills it in.") },
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next))
-            OutlinedTextField(name, { name = it }, label = { Text("This device's name") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp), keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done))
+            PCard(gap = 10.dp) {
+                SectionHeader("Or type it in", Modifier.padding(bottom = 0.dp))
+                OutlinedTextField(address, { address = it }, label = { Text("Address") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    supportingText = { Text("For example pocket:9000. Used as ${Settings.normalizeAddress(address)}") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next))
+                OutlinedTextField(secret, { secret = it }, label = { Text("Enrollment secret") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    supportingText = { Text("From the control panel: Settings, Machine setup.") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next))
+                OutlinedTextField(name, { name = it }, label = { Text("This device's name") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp), keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done))
+            }
             if (error != null) Text(error!!, style = MaterialTheme.typography.bodyMedium, color = PocketTheme.extra.bad)
             Box(contentAlignment = Alignment.Center) {
                 PrimaryButton(if (busy) "Connecting…" else "Connect", ::connect, Modifier.fillMaxWidth(), enabled = !busy && ready)

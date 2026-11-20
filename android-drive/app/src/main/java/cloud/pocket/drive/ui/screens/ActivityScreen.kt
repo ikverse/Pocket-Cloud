@@ -143,6 +143,7 @@ fun ActivityScreen(onSync: () -> Unit) {
                                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                                 })
                             }
+                            if (l.transferId != 0L) PlainButton("Remove", { scope.launch { g.db.transfers().delete(l.transferId) } }, small = true)
                         }
                     }
                 }

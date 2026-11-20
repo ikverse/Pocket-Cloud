@@ -17,20 +17,22 @@ import java.time.ZoneId
 class TimelineTest {
     private val zone = ZoneId.of("Europe/Berlin")
     private fun at(d: Int, h: Int, m: Int) = LocalDateTime.of(2026, 11, d, h, m).atZone(zone).toInstant().toEpochMilli()
-    private fun transfer(name: String, state: String, finished: Long, pair: Long = 0, kind: String = UP) =
-        TransferEntity(kind = kind, bucket = "shared", key = name, localUri = "", name = name, size = 1, state = state, finishedAt = finished, pairId = pair)
+    private fun transfer(id: Long, name: String, state: String, finished: Long, pair: Long = 0, kind: String = UP) =
+        TransferEntity(id = id, kind = kind, bucket = "shared", key = name, localUri = "", name = name, size = 1, state = state, finishedAt = finished, pairId = pair)
 
     @Test fun mergesSyncLogAndHandTransfersNewestFirst() {
         val log = listOf(SyncLog(1, 7, at(20, 19, 12), "info", "212 photos uploaded"), SyncLog(2, 8, at(20, 21, 4), "conflict", "report.xlsx changed"))
         val transfers = listOf(
-            transfer("lease.pdf", DONE, at(20, 18, 20)),
-            transfer("IMG_1.jpg", DONE, at(20, 19, 11), pair = 7),          // made by sync: summed up in the log already
-            transfer("bank.zip", FAILED, at(20, 20, 0)),                     // not finished
-            transfer("taxes.pdf", DONE, at(20, 22, 0), kind = DOWN),
+            transfer(11, "lease.pdf", DONE, at(20, 18, 20)),
+            transfer(12, "IMG_1.jpg", DONE, at(20, 19, 11), pair = 7),          // made by sync: summed up in the log already
+            transfer(13, "bank.zip", FAILED, at(20, 20, 0)),                     // not finished
+            transfer(14, "taxes.pdf", DONE, at(20, 22, 0), kind = DOWN),
         )
         val lines = Timeline.merge(log, mapOf(7L to "Camera backup", 8L to "Documents"), transfers)
         assertEquals(listOf("Downloaded taxes.pdf", "report.xlsx changed", "212 photos uploaded", "Uploaded lease.pdf"), lines.map { it.text })
         assertEquals(listOf("You", "Documents", "Camera backup", "You"), lines.map { it.who })
+        // transfer lines know their transfer, so each can be removed on its own; sync lines don't
+        assertEquals(listOf(14L, 0L, 0L, 11L), lines.map { it.transferId })
     }
 
     @Test fun conflictsSinceDismissal() {

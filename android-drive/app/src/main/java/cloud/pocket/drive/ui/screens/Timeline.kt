@@ -9,8 +9,11 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-/** One line of Activity's log: a sync log line, or a transfer the user started that finished. */
-data class TimelineLine(val ts: Long, val who: String, val text: String, val level: String, val pairId: Long)
+/**
+ * One line of Activity's log: a sync log line, or a transfer the user started that finished.
+ * [transferId] is the finished transfer the line stands for (0 for sync log lines), so it can be removed on its own.
+ */
+data class TimelineLine(val ts: Long, val who: String, val text: String, val level: String, val pairId: Long, val transferId: Long = 0)
 
 object Timeline {
     /**
@@ -21,7 +24,7 @@ object Timeline {
         val sync = log.map { TimelineLine(it.ts, pairNames[it.pairId] ?: "Sync", it.text, it.level, it.pairId) }
         val mine = transfers.filter { it.state == DONE && it.pairId == 0L }.map {
             TimelineLine(if (it.finishedAt > 0) it.finishedAt else it.createdAt, "You",
-                (if (it.kind == DOWN) "Downloaded " else "Uploaded ") + it.name, "info", 0)
+                (if (it.kind == DOWN) "Downloaded " else "Uploaded ") + it.name, "info", 0, it.id)
         }
         return (sync + mine).sortedByDescending { it.ts }.take(limit)
     }

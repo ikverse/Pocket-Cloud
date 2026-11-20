@@ -258,10 +258,12 @@ class BrowseModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun unlock(v: Vault, password: String) {
+    /** Save [v]'s password on this phone; [onDone] runs once it is saved (the Vault screen re-reads its state then). */
+    fun unlock(v: Vault, password: String, onDone: () -> Unit = {}) {
         viewModelScope.launch {
             g.vaults.add(v.bucket, v.prefix, v.name, password)
             locked = null
+            onDone()
             reload()
         }
     }
