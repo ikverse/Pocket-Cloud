@@ -84,6 +84,20 @@ class SyncTests(FakeTestCase):
         changes = [x for x in self.requests() if x["path"] == "/_pocket/changes"]
         self.assertTrue(changes, "later runs use the change feed")
 
+    def test_moves_out_of_the_bucket_or_prefix_remove_the_local_copy(self):
+        self.local("a.txt", "1")
+        self.local("b.txt", "2")
+        self.a.sync(self.dir, prefix="docs/")
+        other = self.open(device_id="other-device-1")
+        self.a.move("docs/a.txt", "a.txt", to_bucket="device")     # into this device's private bucket
+        other.move("docs/b.txt", "archive/b.txt")                    # out of the prefix
+        r = self.a.sync(self.dir, prefix="docs/")
+        self.assertEqual(sorted(r.deleted_local), ["docs/a.txt", "docs/b.txt"])
+        self.assertEqual(self.files(), {".pocket-sync.json"})
+        self.local("a.txt", "new")                                   # a later file there is a plain upload
+        r = self.a.sync(self.dir, prefix="docs/")
+        self.assertEqual((r.uploaded, r.conflicts), (["docs/a.txt"], []))
+
     def test_changed_on_both_sides_is_a_conflict(self):
         self.local("n.md", "base")
         self.a.sync(self.dir)

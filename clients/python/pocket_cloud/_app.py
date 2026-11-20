@@ -187,7 +187,8 @@ class ChangeFeed:
     def __iter__(self):
         while True:
             params = [("since", self.cursor), ("wait", self._wait or None)]
-            d = self._pocket._call("GET", "/_pocket/changes", params, retry=True).json()
+            d = self._pocket._call("GET", "/_pocket/changes", params, retry=True,
+                                   extra_timeout=float(self._wait or 0)).json()
             for c in d.get("changes", []):
                 yield Change.from_json(c)
             self.cursor = d.get("cursor")
@@ -249,8 +250,9 @@ class App:
 
     # ---------------------------------------------------------------------------------------- plumbing
 
-    def _call(self, method, path, params=None, body=b"", headers=None, retry=False, sink=None, ok=(200,)):
-        return self._http.request(method, path, params, body, headers, retry, sink, ok)
+    def _call(self, method, path, params=None, body=b"", headers=None, retry=False, sink=None, ok=(200,),
+              extra_timeout=0):
+        return self._http.request(method, path, params, body, headers, retry, sink, ok, extra_timeout)
 
     @staticmethod
     def _file_path(bucket, key):
@@ -318,12 +320,12 @@ class App:
             content_type = content_type or "text/plain; charset=utf-8"
         return self._put(key, bytes(data), bucket, if_match=if_match, content_type=content_type)
 
-    def put_file(self, key, src, bucket="shared", if_match=None, *, _if_none_match=False):
+    def put_file(self, key, src, bucket="shared", if_match=None, *, _if_none_match=False, _keep_time=True):
         """Stream the file at src to key, keeping its modification time."""
         ctype = mimetypes.guess_type(src)[0]
         with open(src, "rb") as f:
             return self._put(key, f, bucket, if_match=if_match, if_none_match=_if_none_match, content_type=ctype,
-                             modified=os.stat(src).st_mtime)
+                             modified=os.stat(src).st_mtime if _keep_time else None)
 
     def stat(self, key, bucket="shared"):
         """Entry for key, or None when there is no file."""
@@ -410,15 +412,16 @@ class App:
                         dst.close()
                 finally:
                     src.close()
-                st = os.stat(path)
-                os.utime(copy, (st.st_atime, st.st_mtime))
-                entry = self.put_file(key, copy, bucket)
+                entry = self.put_file(key, copy, bucket, _keep_time=False)
             finally:
                 shutil.rmtree(tmpdir, ignore_errors=True)
         else:
-            entry = self.put_file(key, path, bucket)
-        kept = [e for e in self.list(folder, bucket) if e.key.endswith("-" + name)]
-        for old in kept[:-int(keep)]:
+            entry = self.put_file(key, path, bucket, _keep_time=False)
+        # newest by the server's upload time (not the name, which carries this device's clock); the backup
+        # just written always stays
+        others = sorted((e for e in self.list(folder, bucket) if e.key.endswith("-" + name) and e.key != key),
+                        key=lambda e: (e.modified or 0, e.key))
+        for old in others[:max(0, len(others) - (int(keep) - 1))]:
             try:
                 self.delete(old.key, bucket)
             except NotFound:

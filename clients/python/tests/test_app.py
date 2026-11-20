@@ -136,6 +136,28 @@ class FileTests(FakeTestCase):
         self.assertEqual(got.etag, e.etag)
         self.assertEqual([n for n in os.listdir(self.path("out")) if n.startswith(".pocket-tmp")], [])
 
+    def test_medium_upload_goes_through_100_continue(self):
+        src = self.write("two.bin", os.urandom(2 << 20))
+        e = self.a.put_file("two.bin", src)
+        self.assertEqual(e.size, 2 << 20)
+        self.assertEqual(self.a.get("two.bin"), self.read("two.bin"))
+
+    def test_big_upload_refused_early_gives_the_real_error_fake_only(self):
+        src = self.write("big.bin", b"\0" * (70 << 20))
+        old = self.a.put("big.bin", b"small")
+        self.a.put("big.bin", b"changed")
+        with self.assertRaises(pocket.PreconditionFailed):
+            self.a.put_file("big.bin", src, if_match=old.etag)
+        self.srv.control("app", {"read_only": True}, query="app=test-app")
+        with self.assertRaises(pocket.ReadOnly):
+            self.a.put_file("big.bin", src)
+        self.srv.control("app", {"read_only": False}, query="app=test-app")
+        self.srv.control("moved", {"times": 1})
+        e = self.a.put_file("big.bin", src)                          # re-enrolls, then uploads
+        self.assertEqual(e.size, 70 << 20)
+        enrolls = [r for r in self.requests() if r["path"] == "/_pocket/enroll"]
+        self.assertEqual(len(enrolls), 2)
+
     def test_bad_key_is_refused_locally(self):
         with self.assertRaises(pocket.PocketError) as cm:
             self.a.put("a//b", b"x")
@@ -240,6 +262,20 @@ class BackupTests(FakeTestCase):
         self.assertEqual(self.read("restored.txt"), b"v")
         self.assertIsNone(self.a.restore_latest("backups/none/", self.path("x")))
 
+    def test_device_clock_behind_never_deletes_the_new_backup(self):
+        src = self.write("notes.txt", "v")
+        now = datetime.datetime(2026, 11, 20, 12, 0, 0, tzinfo=datetime.timezone.utc)
+        for i in range(3):
+            with mock.patch.object(_app, "_utcnow", return_value=now + datetime.timedelta(minutes=i)):
+                self.a.backup(src, keep=3)
+        behind = now - datetime.timedelta(days=30)                   # this device's clock went back a month
+        with mock.patch.object(_app, "_utcnow", return_value=behind):
+            e = self.a.backup(src, keep=3)
+        keys = [x.key for x in self.a.list("backups/notes.txt/")]
+        self.assertIn(e.key, keys)
+        self.assertEqual(len(keys), 3)
+        self.assertNotIn("backups/notes.txt/20261120-120000-notes.txt", keys, "the oldest upload went")
+
     def test_sqlite_in_use_is_copied_safely(self):
         db = self.path("ledger.db")
         con = sqlite3.connect(db)
@@ -291,6 +327,14 @@ class ChangeTests(FakeTestCase):
         got = list(self.a.changes(feed.cursor, wait=5))
         self.assertEqual([c.key for c in got], ["late"])
         self.assertLess(time.time() - t, 4)
+
+    def test_long_poll_longer_than_the_timeout(self):
+        a = self.open(timeout=1)
+        feed = a.changes()
+        list(feed)
+        t = time.time()
+        self.assertEqual(list(a.changes(feed.cursor, wait=2)), [])
+        self.assertGreaterEqual(time.time() - t, 1.5)
 
     def test_cursor_expired_fake_only(self):
         feed = self.a.changes()

@@ -96,12 +96,11 @@ def sync(pocket, folder, bucket="shared", prefix="", allow_mass_delete=False):
         try:
             feed = pocket.changes(state["cursor"])
             for c in feed:
-                if c.bucket != bucket:
-                    continue
+                # a move's source side first: a move out of this bucket or prefix removes the file here
                 if c.kind == "move" and c.from_ and c.from_.get("bucket") == bucket \
                         and c.from_.get("key", "").startswith(prefix):
                     remote.pop(c.from_["key"][len(prefix):], None)
-                if not c.key.startswith(prefix):
+                if c.bucket != bucket or not c.key.startswith(prefix):
                     continue
                 rel = c.key[len(prefix):]
                 if _ignored(rel):

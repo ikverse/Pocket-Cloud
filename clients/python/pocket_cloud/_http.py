@@ -3,6 +3,7 @@
 import hashlib
 import http.client
 import json
+import select
 import socket
 import time
 import urllib.parse
@@ -12,6 +13,9 @@ from ._errors import PocketError, Unreachable, error_for
 
 BACKOFF = (0.5, 1.0, 2.0)
 CHUNK = 1 << 20
+EXPECT_OVER = 1 << 20          # uploads bigger than this wait for "100 Continue" before sending the body
+CRLF = b"\r\n"
+EXPECT_WAIT = 3.0              # ...for this long at most, then send anyway (RFC 9110)
 
 
 class Response:
@@ -52,7 +56,19 @@ def raw_request(url, method, path, query="", body=b"", headers=None, timeout=30,
         hdrs = dict(headers or {})
         if isinstance(body, (bytes, bytearray)):
             hdrs.setdefault("Content-Length", str(len(body)))
-        conn.request(method, base + path + ("?" + query if query else ""), body=body if body else None, headers=hdrs)
+        target = base + path + ("?" + query if query else "")
+        if body and int(hdrs.get("Content-Length") or 0) > EXPECT_OVER:
+            # the server refuses early (412, quota, read-only, moved device) without reading the body and closes
+            # the connection; sending a big body first would turn that answer into a connection reset
+            hdrs["Expect"] = "100-continue"
+            conn.putrequest(method, target)
+            for k, v in hdrs.items():
+                conn.putheader(k, v)
+            conn.endheaders()
+            if _go_ahead(conn.sock, EXPECT_WAIT):
+                _send_body(conn, body)
+        else:
+            conn.request(method, target, body=body if body else None, headers=hdrs)
         r = conn.getresponse()
         got = {k.lower(): v for k, v in r.getheaders()}
         if sink is not None and 200 <= r.status < 300 and method != "HEAD":
@@ -65,6 +81,46 @@ def raw_request(url, method, path, query="", body=b"", headers=None, timeout=30,
         return Response(r.status, got, r.read())
     finally:
         conn.close()
+
+
+def _go_ahead(sock, wait):
+    """After the headers of an Expect: 100-continue request: True to send the body (100 Continue came and was
+    read, or nothing came in time), False when the server already sent its final answer (or closed)."""
+    deadline = time.monotonic() + wait
+    peek = b""
+    while CRLF not in peek:
+        left = deadline - time.monotonic()
+        if left <= 0:
+            return True
+        ready, _, _ = select.select([sock], [], [], left)
+        if not ready:
+            return True
+        peek = sock.recv(64, socket.MSG_PEEK)
+        if not peek:
+            return False
+        if CRLF not in peek and len(peek) >= 64:
+            break
+    parts = peek.split(b" ", 2)
+    if len(parts) < 2 or parts[1] != b"100":
+        return False
+    got = b""
+    while not got.endswith(CRLF + CRLF):          # consume the interim answer, nothing more
+        ch = sock.recv(1)
+        if not ch:
+            return False
+        got += ch
+    return True
+
+
+def _send_body(conn, body):
+    if hasattr(body, "read"):
+        while True:
+            chunk = body.read(CHUNK)
+            if not chunk:
+                break
+            conn.send(chunk)
+    else:
+        conn.send(body)
 
 
 def raise_for(resp, method):
@@ -98,7 +154,8 @@ class Transport:
     def unsigned(self, method, path, query="", retry=True, sink=None, headers=None, url=None):
         return self._send(method, path, query, b"", headers or {}, retry, sink, signed=False, url=url)
 
-    def request(self, method, path, params=None, body=b"", headers=None, retry=False, sink=None, ok=(200,)):
+    def request(self, method, path, params=None, body=b"", headers=None, retry=False, sink=None, ok=(200,),
+                extra_timeout=0):
         """A signed request. params: list of (name, value). body: bytes or an open binary file. ok: statuses that
         are answers, not errors (304 is always passed through). retry: retry on Unreachable / 503."""
         query = _sign.query_string(params or [])
@@ -111,12 +168,14 @@ class Transport:
             digest = hashlib.sha256(body).hexdigest()
         if method == "PUT":
             headers["x-pocket-content-sha256"] = digest
-        resp = self._send(method, path, query, body, headers, retry, sink, signed=True, digest=digest)
+        resp = self._send(method, path, query, body, headers, retry, sink, signed=True, digest=digest,
+                          extra_timeout=extra_timeout)
         if resp.status in ok or resp.status == 304:
             return resp
         raise_for(resp, method)
 
-    def _send(self, method, path, query, body, headers, retry, sink, signed, digest=None, url=None):
+    def _send(self, method, path, query, body, headers, retry, sink, signed, digest=None, url=None,
+              extra_timeout=0):
         attempts = len(BACKOFF) + 1 if retry else 1
         reenrolled = False
         start = body.tell() if hasattr(body, "read") else None
@@ -133,7 +192,8 @@ class Transport:
                 sink.truncate()
             wait = None
             try:
-                resp = raw_request(url or self.endpoint, method, path, query, body, hdrs, self.timeout, sink)
+                resp = raw_request(url or self.endpoint, method, path, query, body, hdrs,
+                                   self.timeout + extra_timeout, sink)
             except (OSError, http.client.HTTPException, socket.timeout) as e:
                 if attempt + 1 >= attempts:
                     raise Unreachable(f"Pocket Cloud can't be reached at {url or self.endpoint}: {e}",

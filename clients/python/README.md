@@ -151,4 +151,5 @@ python -m unittest test_signing test_app test_sync test_cli    # against the in-
 `tests/fake_server.py` is the fake server of `docs/app-api.md` section 11: a real HTTP server on `127.0.0.1`
 with the real signature check and `/_fake/` test controls. Tests named `*_fake_only` use those controls.
 `test_signing.py` checks the section 12 signing vectors. `test_client.py` runs `connect()` against the real
-server (`server/tests/helpers.PocketServer`, needs rclone).
+server (`server/tests/helpers.PocketServer`). That needs `tools/rclone/rclone.exe`, which git ignores, so in a
+worktree set `POCKET_RCLONE` to the main checkout's copy.

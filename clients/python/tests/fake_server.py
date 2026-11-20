@@ -122,6 +122,16 @@ class _Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
+    def handle_expect_100(self):
+        """Like the real gateway: hold "100 Continue" back until the upload has passed its checks."""
+        return True
+
+    def _continue(self):
+        if self.hdr.get("expect", "").lower() == "100-continue" and not self._continued:
+            self._continued = True
+            self.send_response_only(100)
+            self.end_headers()
+
     def do_GET(self):
         self._handle("GET")
 
@@ -149,6 +159,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.hdr = {k.lower(): v for k, v in self.headers.items()}
         self._status, self._code = 0, None
         self._body = None
+        self._continued = False
         try:
             if self.raw_path.startswith("/_fake/"):
                 return self._fake_route()
@@ -167,6 +178,10 @@ class _Handler(BaseHTTPRequestHandler):
                                                 "status": self._status, "code": self._code})
 
     def _drain(self):
+        expecting = self.hdr.get("expect", "").lower() == "100-continue"
+        if self._body is None and expecting and not self._continued:
+            self.close_connection = True          # the client never sent the body: answer and close
+            self._body = b""
         if self._body is None:
             n = int(self.hdr.get("content-length") or 0)
             if n and n < 64 << 20:
@@ -177,6 +192,7 @@ class _Handler(BaseHTTPRequestHandler):
 
     def body(self):
         if self._body is None:
+            self._continue()
             n = int(self.hdr.get("content-length") or 0)
             self._body = self.rfile.read(n) if n else b""
         return self._body
