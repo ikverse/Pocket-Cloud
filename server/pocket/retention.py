@@ -14,7 +14,7 @@ import os
 import time
 
 from . import undo
-from .layout import FAMILY, remove_empty_dirs, walk_files
+from .layout import FAMILY, remove_empty_dirs, safe_key, walk_files
 
 MAX_RULES = 20
 GUARD_FILES = 500
@@ -74,29 +74,38 @@ def _spaces(core, app_id, bucket):
 
 
 def _files(core, owner, space, prefix):
-    """key -> (mtime, size) under prefix, internal storage first (as rclone sees it)."""
+    """key -> (mtime, size, arrived) under prefix, internal storage first (as rclone sees it). Only the prefix's
+    folder is walked."""
+    cut = prefix.rfind("/")
+    parts = prefix[:cut].split("/") if cut > 0 else []
+    if cut == 0 or (parts and safe_key("/".join(parts)) is None):
+        return {}
+    arrived = core.meta.arrivals(owner, space)
     out = {}
     for storage in core.layout.storages():
         base = core.layout.space_path(storage, owner, space)
-        for path, st in walk_files(base):
+        for path, st in walk_files(os.path.join(base, *parts)):
             key = "/".join(os.path.relpath(path, base).split(os.sep))
             if key.startswith(prefix):
-                out.setdefault(key, (st.st_mtime, st.st_size))
+                out.setdefault(key, (st.st_mtime, st.st_size, arrived.get(key)))
     return out
 
 
 def _would_remove(rule, files, now):
+    """keep_last counts the newest by modification time; keep_days ages a file from the later of its modification
+    time and its arrival on the server, so a fresh upload carrying an old date is young."""
     keys = [k for k in files if not protected(k)]
     keep = set()
     if rule["keep_last"]:
         keep |= set(sorted(keys, key=lambda k: files[k][0], reverse=True)[:rule["keep_last"]])
     if rule["keep_days"]:
-        keep |= {k for k in keys if now - files[k][0] < rule["keep_days"] * 86400}
+        keep |= {k for k in keys if now - max(files[k][0], files[k][2] or 0) < rule["keep_days"] * 86400}
     return set(keys) - keep
 
 
-def run(core, now=None):
-    """Apply every app's rules once. Returns (result, detail) for the job record."""
+def run(core, now=None, force=False):
+    """Apply every app's rules once. Returns (result, detail) for the job record. The nightly run holds back a
+    rule that would remove too much (the guard); force (the control panel's "run now") applies it anyway."""
     now = now or time.time()
     total_files = total_bytes = 0
     guarded = []
@@ -113,7 +122,7 @@ def run(core, now=None):
                 files = _files(core, owner, space, r["prefix"])
                 files_of.setdefault((owner, space), {}).update(files)
                 gone = _would_remove(r, files, now)
-                if len(gone) > GUARD_FILES or len(gone) * 2 > len(files):
+                if not force and (len(gone) > GUARD_FILES or len(gone) * 2 > len(files)):
                     blocked = True
                 per_space[(owner, space)] = gone
             subject = f"{app_id}:{r['bucket']}:{r['prefix']}"
@@ -122,7 +131,8 @@ def run(core, now=None):
                 core.stats.raise_alert("retention_guard", subject, "warn",
                                        f"Retention rule {r['bucket']} {r['prefix']} of {app_id} would remove {n} files "
                                        f"tonight (more than {GUARD_FILES}, or more than half of the files under it): "
-                                       f"it removed nothing. Check the rule in the control panel.")
+                                       f"it removed nothing. Check the rule in the control panel; if it is right, run "
+                                       f"\"Retention rules\" now on the Jobs page to apply it once anyway.")
                 core.log(f"retention {app_id} {r['bucket']} {r['prefix']}: would remove {n} files; held back")
                 guarded.append(subject)
                 per_space = {k: set() for k in per_space}
@@ -132,7 +142,7 @@ def run(core, now=None):
         # a key goes only if every rule covering it would remove it
         removed = {}          # (owner, space) -> {key: size}
         for (owner, space), files in files_of.items():
-            for key, (_, size) in files.items():
+            for key, (_, size, _) in files.items():
                 covering = [p for p in plans if (owner, space) in p[1] and key.startswith(p[0]["prefix"])]
                 if covering and all(key in p[1][(owner, space)] for p in covering):
                     removed.setdefault((owner, space), {})[key] = size

@@ -363,9 +363,10 @@ class Jobs:
         return "ok", f"{checked:,} files checked, 0 problems"
 
     # ---- retention rules (retention.py), before the nightly copy ----
-    def retention(self):
+    def retention(self, force=False):
+        """force: run from the control panel, which applies rules the nightly guard held back."""
         from . import retention
-        return retention.run(self.core)
+        return retention.run(self.core, force=force)
 
     # ---- logs ----
     def purge(self):

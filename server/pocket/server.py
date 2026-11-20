@@ -71,6 +71,7 @@ class Core:
         self.changes = Changes(self.state_dir)
         self.meta = FileMeta(self.state_dir)
         self._key_locks = [threading.Lock() for _ in range(KEY_LOCKS)]
+        self._hashing = threading.Lock()
         self.usage = Usage(self.layout, self.registry, s)
         self.rclone = Rclone(s, self.state_dir, self.log)
         self.jobs = Jobs(self.layout, self.registry, self.usage, self.stats, self.rclone, s, self.log)
@@ -141,6 +142,7 @@ class Core:
         loop.start()
         self._threads.append(loop)
         self.stats.event("restart", "", "info", "Pocket Cloud started.")
+        self.start_hash_backlog()
 
     def stop(self):
         self.log("Pocket Cloud stopping")
@@ -476,7 +478,10 @@ class Core:
         }
 
     # ---- room checks for uploads ----
-    def check_space(self, app, space, size, ctx):
+    def check_space(self, app, space, size, ctx, new_bytes=True):
+        """Refuse a write of size bytes into app's space when it doesn't fit. new_bytes=False: the bytes are
+        already stored (a move from another app's space, a rename on disk), so only the app's own limits count,
+        not the pool or the phone's free space."""
         used = self.usage.app_used(app["id"])
         if used + size > app["alloc_bytes"]:
             if app["at_limit"] == "refuse":
@@ -489,9 +494,9 @@ class Core:
         if hold and used + size > app["alloc_bytes"] - hold:
             raise Refuse(403, "QuotaExceeded",
                          f"{hold / GB:.2f} GB of {app['id']}'s allocation is held back as the devices' reserve.")
-        cap = app.get("device_cap_bytes")
-        if cap and space.startswith("device:") and self.usage.space_used(app["id"], space) + size > cap:
-            raise Refuse(403, "QuotaExceeded", f"This device's private space would go over its {cap / GB:.2f} GB cap.")
+        self.check_device_cap(app, space, size)
+        if not new_bytes:
+            return
         pool = self.usage.pool()
         if pool["used"] + size > pool["total"]:
             raise Refuse(507, "PoolFull", "Pocket Cloud's storage pool is full.")
@@ -501,6 +506,55 @@ class Core:
             raise Refuse(507, "PhoneStorageLow", "The phone's internal storage is too full to accept this upload.")
         if target == "sd" and free < size:
             raise Refuse(507, "PoolFull", "The SD card is full.")
+
+    def check_device_cap(self, app, space, size):
+        cap = app.get("device_cap_bytes")
+        if cap and space.startswith("device:") and self.usage.space_used(app["id"], space) + size > cap:
+            raise Refuse(403, "QuotaExceeded", f"This device's private space would go over its {cap / GB:.2f} GB cap.")
+
+    # ---- ETags for files that have none yet (written before v2, or behind the server's back) ----
+    def hash_backlog(self):
+        """Work out and keep the ETag of every file that has no valid one, so listings need not hash.
+        Runs in the background after start and after the nightly jobs; returns how many files it hashed."""
+        n = 0
+        for app in self.registry.apps():
+            for storage in self.layout.storages():
+                base = self.layout.app_dir(storage, app["id"])
+                for path, st in walk_files(base):
+                    if self._stop.is_set():
+                        self.meta.commit()
+                        return n
+                    rel = os.path.relpath(path, base).split(os.sep)
+                    if rel[0] == "shared" and len(rel) > 1:
+                        space, key = "shared", "/".join(rel[1:])
+                    elif rel[0] == "devices" and len(rel) > 2:
+                        space, key = "device:" + rel[1], "/".join(rel[2:])
+                    else:
+                        continue
+                    if self.meta.known(app["id"], space, key, st):
+                        continue
+                    try:
+                        self.meta.etag(app["id"], space, key, path, st, commit=False)
+                    except OSError:
+                        continue
+                    n += 1
+                    if n % 50 == 0:
+                        self.meta.commit()
+        self.meta.commit()
+        return n
+
+    def start_hash_backlog(self):
+        if self._hashing.acquire(blocking=False):
+            def work():
+                try:
+                    n = self.hash_backlog()
+                    if n:
+                        self.log(f"worked out the ETag of {n} files")
+                except Exception as e:
+                    self.log(f"ETag backlog: {type(e).__name__}: {e}")
+                finally:
+                    self._hashing.release()
+            threading.Thread(target=work, daemon=True, name="etag-backlog").start()
 
     def reserve_hold(self, app, device_uid=None):
         """Bytes of the app's allocation kept free for the devices other than device_uid: each device is
@@ -683,6 +737,7 @@ class Core:
                     self.usage.scan()
                     self.update_flags()
                     self.snapshot()
+                    self.start_hash_backlog()
                 elif name == JOB_EARLY:
                     self.jobs.run(JOB_EARLY, self.jobs.move, early=True)
                     self.usage.scan()

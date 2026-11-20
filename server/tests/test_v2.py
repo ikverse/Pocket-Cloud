@@ -416,6 +416,7 @@ class V2(unittest.TestCase):
             self.put(e, f"releases/{v}/a.apk", b"a", headers={"x-pocket-modified": str(now - (20 - v) * 86400)})
         self.put(e, "releases/latest.json", b"{}", headers={"x-pocket-modified": str(now - 90 * 86400)})
         self.put(e, "releases/latest-mac.yml", b"y", headers={"x-pocket-modified": str(now - 90 * 86400)})
+        self.backdate_arrivals("v2-keep")
         start = self.cursor(e)
         bad = self.srv.api("PATCH", "/api/apps/v2-keep/rules", {"retention": [
             {"bucket": "shared", "prefix": "a/", "keep_last": 1, "keep_days": None},
@@ -464,8 +465,117 @@ class V2(unittest.TestCase):
         self.assertEqual(result, "warn", detail)
         self.assertEqual(len(self.call(e, "GET", "/_pocket/list", "bucket=shared&prefix=backups%2F")["files"]), 9)
         self.assertTrue(any(a["kind"] == "retention_guard" for a in core.stats.active_alerts()))
+        # run by hand from the panel, the held-back rule is applied
+        self.panel("POST", "/api/jobs/retention/run", {})
+        end = time.time() + 30
+        while time.time() < end and len(self.call(e, "GET", "/_pocket/list", "bucket=shared&prefix=backups%2F")["files"]) > 1:
+            time.sleep(0.2)
+        self.assertEqual([f["key"] for f in self.call(e, "GET", "/_pocket/list", "bucket=shared&prefix=backups%2F")["files"]],
+                         ["backups/db/09.zip"])
+        self.assertFalse(any(a["kind"] == "retention_guard" and a["subject"].startswith("v2-keep:")
+                             for a in core.stats.active_alerts()))
         self.panel("PATCH", "/api/apps/v2-keep/rules", {"retention": []})
         self.assertEqual(self.panel("GET", "/api/apps/v2-keep/rules")["retention"], [])
+
+    def backdate_arrivals(self, app):
+        """Files the test gave old dates are taken as having arrived then too (as if uploaded long ago)."""
+        meta = self.srv.core.meta
+        with meta._lock:
+            meta._con.execute("UPDATE file_meta SET arrived = mtime_ns / 1e9 WHERE app=?", (app,))
+            meta._con.commit()
+
+    def test_retention_ages_by_arrival(self):
+        e = self.app("v2-arrive")
+        now = time.time()
+        self.put(e, "logs/ancient.log", b"a", headers={"x-pocket-modified": str(now - 400 * 86400)})
+        self.put(e, "logs/old.log", b"o", headers={"x-pocket-modified": str(now - 300 * 86400)})
+        self.backdate_arrivals("v2-arrive")
+        # uploaded just now, but carrying an old date: young
+        self.put(e, "logs/fresh-copy.log", b"f", headers={"x-pocket-modified": str(now - 200 * 86400)})
+        self.panel("PATCH", "/api/apps/v2-arrive/rules", {"retention": [{"bucket": "shared", "prefix": "logs/", "keep_days": 7}]})
+        core = self.srv.core
+        core.jobs.run("Retention rules", lambda: core.jobs.retention(force=True))
+        keys = [f["key"] for f in self.call(e, "GET", "/_pocket/list", "bucket=shared&prefix=logs%2F")["files"]]
+        self.assertEqual(keys, ["logs/fresh-copy.log"])
+
+    def test_empty_app_feeds_deletes(self):
+        e = self.app("v2-empty")
+        self.put(e, "a.txt", b"a")
+        self.put(e, "b/c.txt", b"c", bucket="device")
+        start = self.cursor(e)
+        self.panel("POST", "/api/apps/v2-empty/empty", {})
+        got = sorted((c["kind"], c["bucket"], c["key"], c["source"]) for c in self.changes(e, start)["changes"])
+        self.assertEqual(got, [("delete", "device", "b/c.txt", "panel"), ("delete", "shared", "a.txt", "panel")])
+        self.assertIsNone(self.srv.core.meta._row("v2-empty", "shared", "a.txt"))
+
+    def test_listing_hashes_within_a_budget(self):
+        import pocket.files as files
+        e = self.app("v2-hash")
+        core = self.srv.core
+        base = self.srv.files("int", "apps", "v2-hash", "shared", "old")
+        os.makedirs(base, exist_ok=True)
+        for i in range(4):                     # written before v2 (behind the server's back): no ETag yet
+            with open(os.path.join(base, f"{i}.bin"), "wb") as f:
+                f.write(b"%d" % i * 1000)
+        saved = files.LIST_HASH_BYTES
+        files.LIST_HASH_BYTES = 1              # every file without an ETag ends the page
+        try:
+            pages, seen, cursor = 0, [], None
+            while True:
+                out = self.call(e, "GET", "/_pocket/list", "bucket=shared&prefix=old%2F" + (f"&cursor={cursor}" if cursor else ""))
+                pages += 1
+                seen += [(f["key"], f["etag"]) for f in out["files"]]
+                cursor = out["cursor"]
+                if not cursor:
+                    break
+            self.assertEqual(pages, 4)
+            self.assertEqual(seen, [(f"old/{i}.bin", md5(b"%d" % i * 1000)) for i in range(4)])
+            # known now: one page
+            self.assertIsNone(self.call(e, "GET", "/_pocket/list", "bucket=shared&prefix=old%2F")["cursor"])
+            with open(os.path.join(base, "new.bin"), "wb") as f:
+                f.write(b"n")
+            self.assertGreaterEqual(core.hash_backlog(), 1)
+            self.assertEqual(core.meta.known("v2-hash", "shared", "old/new.bin", os.stat(os.path.join(base, "new.bin"))), md5(b"n"))
+        finally:
+            files.LIST_HASH_BYTES = saved
+
+    def test_delimiter_listing_skips_empty_folders(self):
+        e = self.app("v2-delim")
+        self.put(e, "top.txt", b"t")
+        self.put(e, "full/a/b.txt", b"b")
+        os.makedirs(self.srv.files("int", "apps", "v2-delim", "shared", "empty", "deeper"), exist_ok=True)
+        out = self.call(e, "GET", "/_pocket/list", "bucket=shared&delimiter=%2F")
+        self.assertEqual(([f["key"] for f in out["files"]], out["folders"]), (["top.txt"], ["full/"]))
+        out = self.call(e, "GET", "/_pocket/list", "bucket=shared&prefix=fu&delimiter=%2F")
+        self.assertEqual(out["folders"], ["full/"])
+
+    def test_move_near_the_allocation(self):
+        e = self.app("v2-tight")
+        core = self.srv.core
+        self.put(e, "big.bin", b"x" * 900)
+        core.registry.set_allocation("v2-tight", 1000, sum(core.settings.pool_bytes()), core.usage.app_used("v2-tight"))
+        self.call(e, "POST", "/_pocket/move", body={"from": {"bucket": "shared", "key": "big.bin"},
+                                                    "to": {"bucket": "device", "key": "big.bin"}})
+        self.call(e, "POST", "/_pocket/move", body={"from": {"bucket": "device", "key": "big.bin"},
+                                                    "to": {"bucket": "shared", "key": "big.bin"}})
+        core.registry.update_app("v2-tight", device_cap_bytes=500)
+        try:
+            status, body = self.srv.pocket(e, "POST", "/_pocket/move", body={"from": {"bucket": "shared", "key": "big.bin"},
+                                                                             "to": {"bucket": "device", "key": "big.bin"}})
+            self.assertEqual((status, body["error"]), (403, "QuotaExceeded"), "the device cap still holds")
+        finally:
+            core.registry.update_app("v2-tight", device_cap_bytes=None)
+
+    def test_refused_big_upload_is_answered_not_reset(self):
+        e = self.app("v2-drain")
+        core = self.srv.core
+        core.settings.update({"server": {"read_only": True}})
+        try:
+            body = b"\0" * (70 * 1024 * 1024)          # more than the 64 MiB other refusals read and discard
+            status, h, out = self.srv.raw(e, "PUT", "/_pocket/files/shared/big.bin", body=body)
+            self.assertEqual((status, json.loads(out)["error"]), (403, "ReadOnly"))
+        finally:
+            core.settings.update({"server": {"read_only": False}})
 
     # ---- notifications ----
     def test_notify(self):

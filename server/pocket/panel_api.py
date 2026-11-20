@@ -389,6 +389,7 @@ def app_empty(core, app_id):
     _app_or_404(core, app_id)
     now = datetime.datetime.now()
     moved = 0
+    gone = []                    # (space, key) moved into the undo, for the change feed
     for storage in core.layout.storages():
         base = core.layout.app_dir(storage, app_id)
         for path, st in list(walk_files(base)):
@@ -405,6 +406,7 @@ def app_empty(core, app_id):
                 "path": os.path.relpath(dst, core.layout.undo_root(storage)), "size": st.st_size,
                 "reason": "app emptied", "device": "control panel"})
             moved += 1
+            gone.append((space, key))
         for d, _, _ in os.walk(base, topdown=False):
             if d not in (base, os.path.join(base, "shared"), os.path.join(base, "devices")) and \
                     os.path.dirname(d) != os.path.join(base, "devices"):
@@ -420,6 +422,11 @@ def app_empty(core, app_id):
         keys = [d["access_key"] for d in core.registry.devices(app_id)]
         core.rclone.forget(keys, ["shared", "device", ""])
     core.usage.scan()
+    for space, key in dict.fromkeys(gone):      # a key on both storages is one delete
+        core.meta.delete(app_id, space, key)
+        core.record_change(app_id, space, key, "delete", "panel")
+    if gone:
+        core.notify_change(app_id)
     return {"ok": True, "files": moved}
 
 
@@ -707,7 +714,7 @@ def undo_restore(core, body):
     os.replace(src, dst)
     st = os.stat(dst)
     core.usage.add(app_id, space, storage, st.st_size)
-    core.meta.delete(app_id, space, key)
+    core.meta.arrive(app_id, space, key, st)
     etag = core.meta.etag(app_id, space, key, dst, st)
     keys, prefix = _views(core, app_id, space)
     core.rclone.forget(keys, ["/".join([prefix] + key.split("/")[:-1])])
@@ -724,7 +731,9 @@ JOB_FNS = {
     "undo-cleanup": ("Undo cleanup", lambda c: c.jobs.undo_cleanup, "Removes deleted files kept longer than the undo period"),
     "integrity": ("Integrity check", lambda c: c.jobs.integrity, "Reads every file on the SD card and compares checksums"),
     "log-cleanup": ("Log cleanup", lambda c: c.jobs.purge, "Removes request logs older than the log period"),
-    "retention": ("Retention rules", lambda c: c.jobs.retention, "Removes old files by each app's retention rules"),
+    # run by hand, it also applies rules the nightly run held back for removing too much at once
+    "retention": ("Retention rules", lambda c: lambda: c.jobs.retention(force=True),
+                  "Removes old files by each app's retention rules"),
 }
 WEEKDAYS = ["Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays", "Sundays"]
 

@@ -779,7 +779,7 @@ class Cards:
         devs = core.registry.devices(app)
         keys = [d["access_key"] for d in devs if space == "shared" or "device:" + d["uid"] == space]
         core.rclone.forget(keys, ["/".join(["shared" if space == "shared" else "device"] + key.split("/")[:-1])])
-        core.meta.delete(app, space, key)
+        core.meta.arrive(app, space, key, st)
         core.record_change(app, space, key, "put", "card", None, st.st_size, core.meta.etag(app, space, key, dst, st))
         return {"restored": True}
 
@@ -828,7 +828,7 @@ class Cards:
             os.replace(path, dst)
             moved += 1
             st = os.stat(dst)
-            core.meta.delete(to, "shared", key)
+            core.meta.arrive(to, "shared", key, st)
             core.record_change(to, "shared", key, "put", "card", None, st.st_size, core.meta.etag(to, "shared", key, dst, st))
         shutil.rmtree(d, ignore_errors=True)
         remove_empty_dirs(os.path.dirname(d), core.layout.unassigned_root())

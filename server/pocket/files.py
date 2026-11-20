@@ -26,12 +26,14 @@ from urllib.parse import unquote_to_bytes
 
 from . import sigv4, undo
 from .changes import BadCursor, CursorExpired
-from .layout import APP_ID, FAMILY, remove_empty_dirs, safe_key, walk_files
+from .layout import APP_ID, FAMILY, TEMP_PREFIX, remove_empty_dirs, safe_key, walk_files
 from .refuse import Refuse
 
 MAX_PUT = 2 * 1024 ** 3              # one file through PUT /_pocket/files (bigger: S3 multipart)
 CHUNK = 1024 * 1024
 LIST_CURSOR_S = 3600
+LIST_HASH_BYTES = 256 * 1024 ** 2    # a listing page hashes at most about this much (and LIST_HASH_S) ...
+LIST_HASH_S = 2.0                    # ... beyond its first file, then ends early with a cursor
 SHA_HEX = re.compile(r"^[0-9a-f]{64}$")
 PUB = "/_pocket/pub/"
 FILES = "/_pocket/files/"
@@ -183,6 +185,7 @@ class FileRoutes:
                 return False
             name, op, gated = hit
         ctx["op"] = op
+        self._drain_put = False
         try:
             if gated:          # a card swap or planned restart waits for running file operations
                 with self.server.core.gate():
@@ -195,6 +198,16 @@ class FileRoutes:
 
     def _jerr(self, r, ctx):
         ctx["status"], ctx["note"] = r.status, ctx["note"] or r.code
+        if self._drain_put and not self.expect_pending and isinstance(self.body_left, int) and 0 < self.body_left <= MAX_PUT:
+            # a signed upload refused before its body was read: read the body and throw it away, so a client that
+            # sends it without waiting for 100 Continue gets this answer instead of a reset connection
+            left = self.body_left
+            while left:
+                b = self.rfile.read(min(CHUNK, left))
+                if not b:
+                    break
+                left -= len(b)
+            self.body_left = left
         extra = list(r.headers.items()) + self._settle_body()
         reason = http.client.responses.get(r.status, "")
         if self.command == "HEAD":
@@ -340,6 +353,7 @@ class FileRoutes:
         if not SHA_HEX.match(sha):
             raise Refuse(400, "BadRequest", "Uploads need x-pocket-content-sha256: the body's SHA-256 in hex.")
         dev, app = self._v2_auth(raw_path, raw_query, b"", ctx, body_hash=sha)
+        self._drain_put = True             # signed by a known device: a refusal from here on reads the body first
         owner, space = self._where(app, dev, bucket)
         oid, uid = owner["id"], dev["uid"]
         ctx.update(bucket=bucket, key=key)
@@ -399,7 +413,7 @@ class FileRoutes:
                         os.remove(other)          # the new version replaces the copy on the other storage
                 os.replace(tmp, dst)
                 st = os.stat(dst)
-                core.meta.set(oid, space, key, st.st_size, st.st_mtime_ns, etag, ctype)
+                core.meta.set(oid, space, key, st.st_size, st.st_mtime_ns, etag, ctype)     # arrived now
         finally:
             if os.path.exists(tmp):
                 os.remove(tmp)
@@ -496,15 +510,32 @@ class FileRoutes:
         keys = sorted(items, key=_sort_key)
         if after is not None:
             keys = [k for k in keys if _sort_key(k) > after]
-        page, more = keys[:limit], len(keys) > limit
-        files, folders = [], []
-        for k in page:
-            if items[k] is None:
-                folders.append(k)
-            else:
-                path, st = items[k]
-                files.append({"key": k, "size": st.st_size, "etag": core.meta.etag(oid, space, k, path, st),
-                              "modified": _secs(st)})
+        # Files without a known ETag are hashed here (the background hasher fills most in). A page stops early
+        # once that took too long, so a first listing of big files never times out: limit is a maximum.
+        files, folders, page = [], [], []
+        hashed, deadline = 0, time.monotonic() + LIST_HASH_S
+        try:
+            for k in keys[:limit]:
+                if items[k] is None:
+                    folders.append(k)
+                else:
+                    path, st = items[k]
+                    etag = core.meta.known(oid, space, k, st)
+                    if etag is None:
+                        if page and (hashed >= LIST_HASH_BYTES or time.monotonic() >= deadline):
+                            break
+                        try:
+                            etag = core.meta.etag(oid, space, k, path, st, commit=False)
+                        except FileNotFoundError:
+                            page.append(k)    # deleted or moved to the SD card while listing: left out
+                            continue
+                        hashed += st.st_size
+                    files.append({"key": k, "size": st.st_size, "etag": etag, "modified": _secs(st)})
+                page.append(k)
+        finally:
+            if hashed:
+                core.meta.commit()
+        more = len(page) < len(keys) and bool(page)
         out = {"bucket": bucket, "prefix": prefix, "files": files}
         if delim:
             out["folders"] = folders
@@ -521,18 +552,32 @@ class FileRoutes:
         if parts and safe_key("/".join(parts)) is None:
             return {}
         out = {}
+        if delim:                          # one level: files in the prefix's folder, and its non-empty subfolders
+            above = prefix[:cut + 1] if cut > 0 else ""
+            for storage in layout.storages():
+                try:
+                    entries = list(os.scandir(os.path.join(layout.space_path(storage, oid, space), *parts)))
+                except (FileNotFoundError, NotADirectoryError):
+                    continue
+                for ent in entries:
+                    key = above + ent.name
+                    if not key.startswith(prefix) or ent.name.startswith(TEMP_PREFIX):
+                        continue
+                    try:
+                        if ent.is_dir(follow_symlinks=False):
+                            if key + "/" not in out and next(walk_files(ent.path), None) is not None:
+                                out[key + "/"] = None
+                        elif ent.is_file(follow_symlinks=False):
+                            out.setdefault(key, (ent.path, ent.stat(follow_symlinks=False)))
+                    except FileNotFoundError:
+                        continue
+            return out
         for storage in layout.storages():
             base = layout.space_path(storage, oid, space)
             for path, st in walk_files(os.path.join(base, *parts)):
                 key = "/".join(os.path.relpath(path, base).split(os.sep))
-                if not key.startswith(prefix):
-                    continue
-                if delim:
-                    i = key.find("/", len(prefix))
-                    if i >= 0:
-                        out.setdefault(key[:i + 1], None)
-                        continue
-                out.setdefault(key, (path, st))
+                if key.startswith(prefix):
+                    out.setdefault(key, (path, st))
         return out
 
     # ---------- POST /_pocket/move ----------
@@ -570,8 +615,11 @@ class FileRoutes:
             existing = self._locate(did, ds, dk)
             if existing and not overwrite:
                 raise Refuse(409, "KeyExists", "There is already a file at the to key.")
-            if (sid, ss) != (did, ds):
-                core.check_space(do, ds, st.st_size, ctx)
+            # a rename adds no bytes to the pool or the disk; only the target's own limits can be crossed
+            if sid != did:
+                core.check_space(do, ds, st.st_size, ctx, new_bytes=False)
+            elif ss != ds:
+                core.check_device_cap(do, ds, st.st_size)
             dpath = layout.key_path(storage, did, ds, dk)
             self._make_room_for(dpath)
             if existing:

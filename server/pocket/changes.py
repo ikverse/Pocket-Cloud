@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS changes (
     size INTEGER, etag TEXT, time REAL NOT NULL, device TEXT, source TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS changes_app ON changes (app, seq);
+CREATE INDEX IF NOT EXISTS changes_from_app ON changes (from_app, seq);
 CREATE INDEX IF NOT EXISTS changes_time ON changes (time);
 CREATE TABLE IF NOT EXISTS changes_meta (k TEXT PRIMARY KEY, v INTEGER NOT NULL);
 """

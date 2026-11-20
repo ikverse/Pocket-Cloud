@@ -479,7 +479,7 @@ class Handler(FileRoutes, BaseHTTPRequestHandler):
             core.meta.set(owner_id, space, key, st.st_size, st.st_mtime_ns, etag, ctype)
             etag = quoted(etag)
         else:
-            core.meta.delete(owner_id, space, key)
+            core.meta.arrive(owner_id, space, key, st, ctype=ctype)
             etag = core.meta.etag(owner_id, space, key, path, st)
         core.record_change(owner_id, space, key, "put", "app", uid, st.st_size, etag)
 
