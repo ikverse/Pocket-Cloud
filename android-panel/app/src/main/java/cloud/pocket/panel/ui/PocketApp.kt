@@ -5,29 +5,26 @@ import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Apps
-import androidx.compose.material.icons.outlined.Dashboard
-import androidx.compose.material.icons.outlined.Devices
-import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.MoreHoriz
-import androidx.compose.material.icons.outlined.NotificationsNone
-import androidx.compose.material.icons.outlined.ReceiptLong
-import androidx.compose.material.icons.outlined.Schedule
-import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
-import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
-import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldDefaults
-import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -36,45 +33,51 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import cloud.pocket.panel.update.Updates
 import cloud.pocket.panel.data.AlertWorker
 import cloud.pocket.panel.data.ApiException
 import cloud.pocket.panel.data.PocketApi
 import cloud.pocket.panel.data.Session
 import cloud.pocket.panel.ui.components.LocalPanel
+import cloud.pocket.panel.ui.components.NavIcons
 import cloud.pocket.panel.ui.components.Panel
 import cloud.pocket.panel.ui.screens.AlertsScreen
 import cloud.pocket.panel.ui.screens.AppDetailScreen
 import cloud.pocket.panel.ui.screens.AppsScreen
 import cloud.pocket.panel.ui.screens.DevicesScreen
 import cloud.pocket.panel.ui.screens.FilesScreen
+import cloud.pocket.panel.ui.screens.HomeScreen
 import cloud.pocket.panel.ui.screens.JobsScreen
 import cloud.pocket.panel.ui.screens.LogsScreen
-import cloud.pocket.panel.ui.screens.MoreScreen
-import cloud.pocket.panel.ui.screens.OverviewScreen
+import cloud.pocket.panel.ui.screens.PhoneScreen
 import cloud.pocket.panel.ui.screens.SettingsScreen
 import cloud.pocket.panel.ui.screens.SignInScreen
-import cloud.pocket.panel.ui.screens.StorageScreen
+import cloud.pocket.panel.ui.theme.PocketTheme
+import cloud.pocket.panel.update.Updates
 import kotlinx.coroutines.delay
 
-/** A top-level destination. */
-data class Dest(val route: String, val label: String, val icon: ImageVector)
+/** A bottom-bar tab. */
+data class Tab(val route: String, val label: String, val icon: ImageVector)
 
-val ALL = listOf(
-    Dest("overview", "Overview", Icons.Outlined.Dashboard),
-    Dest("storage", "Storage", Icons.Outlined.Storage),
-    Dest("apps", "Apps", Icons.Outlined.Apps),
-    Dest("devices", "Devices", Icons.Outlined.Devices),
-    Dest("files", "Files", Icons.Outlined.Folder),
-    Dest("jobs", "Jobs", Icons.Outlined.Schedule),
-    Dest("alerts", "Alerts", Icons.Outlined.NotificationsNone),
-    Dest("settings", "Settings", Icons.Outlined.Settings),
-    Dest("logs", "Logs", Icons.Outlined.ReceiptLong),
+val TABS = listOf(
+    Tab("home", "Home", NavIcons.Home),
+    Tab("apps", "Apps", NavIcons.Apps),
+    Tab("files", "Files", NavIcons.Files),
+    Tab("phone", "Phone", NavIcons.Phone),
+    Tab("settings", "Settings", NavIcons.Settings),
 )
-private val MORE = Dest("more", "More", Icons.Outlined.MoreHoriz)
-private val ON_BAR = listOf("overview", "apps", "files", "alerts")
+
+/** The tab a page belongs to: Alerts under Home, Devices under Apps, Jobs and Logs under Phone. */
+fun tabOf(route: String): String = when (route.substringBefore('/')) {
+    "home", "alerts" -> "home"
+    "apps", "devices" -> "apps"
+    "files" -> "files"
+    "phone", "jobs", "logs" -> "phone"
+    "settings" -> "settings"
+    else -> "home"
+}
 
 @Composable
 fun PocketApp(startRoute: String? = null) {
@@ -100,7 +103,12 @@ fun PocketApp(startRoute: String? = null) {
 
 @Composable
 private fun Main(api: PocketApi, startRoute: String?, signedOut: () -> Unit) {
-    val stack = remember { mutableStateListOf(startRoute ?: "overview") }
+    // A sub-page opened from outside (an alert notification) sits on top of its tab, so back leads there.
+    val stack = remember {
+        val start = startRoute ?: "home"
+        val tab = tabOf(start)
+        if (start == tab) mutableStateListOf(tab) else mutableStateListOf(tab, start)
+    }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var alertCount by remember { mutableIntStateOf(0) }
@@ -108,7 +116,9 @@ private fun Main(api: PocketApi, startRoute: String?, signedOut: () -> Unit) {
         Panel(api, snackbar, scope,
             open = { route -> if (stack.lastOrNull() != route) stack.add(route) },
             back = { if (stack.size > 1) stack.removeAt(stack.lastIndex) },
-            signedOut = signedOut)
+            signedOut = signedOut,
+            depth = { stack.size },
+            tabLabel = { TABS.first { it.route == tabOf(stack.last()) }.label })
     }
     BackHandler(enabled = stack.size > 1) { stack.removeAt(stack.lastIndex) }
 
@@ -135,50 +145,62 @@ private fun Main(api: PocketApi, startRoute: String?, signedOut: () -> Unit) {
     }
 
     val route = stack.last()
-    val top = route.substringBefore('/')
-    val layout = NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(currentWindowAdaptiveInfo())
-    val compact = layout == NavigationSuiteType.NavigationBar
-    val items = if (compact) ALL.filter { it.route in ON_BAR } + MORE else ALL
-    val selected = if (compact && top !in ON_BAR) "more" else top
+    val selected = tabOf(route)
 
-    fun go(dest: String) {
+    fun go(tab: String) {
         stack.clear()
-        stack.add(dest)
+        stack.add(tab)
     }
 
     CompositionLocalProvider(LocalPanel provides panel) {
-        NavigationSuiteScaffold(
-            layoutType = layout,
-            navigationSuiteItems = {
-                items.forEach { d ->
-                    item(
-                        selected = selected == d.route,
-                        onClick = { go(d.route) },
-                        icon = {
-                            if (d.route == "alerts" && alertCount > 0) {
-                                BadgedBox(badge = { Badge { Text("$alertCount") } }) { Icon(d.icon, null) }
-                            } else Icon(d.icon, null)
-                        },
-                        label = { Text(d.label) },
-                    )
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
+            bottomBar = { BottomBar(selected, alertCount, ::go) },
+        ) { inner ->
+            Box(Modifier.fillMaxSize().padding(inner).consumeWindowInsets(inner)) {
+                val arg = route.substringAfter('/', "").ifBlank { null }
+                key(route) {
+                    when (route.substringBefore('/')) {
+                        "home" -> HomeScreen()
+                        "alerts" -> AlertsScreen()
+                        "apps" -> if (arg != null) AppDetailScreen(arg) else AppsScreen()
+                        "devices" -> DevicesScreen()
+                        "files" -> FilesScreen(arg)
+                        "phone" -> PhoneScreen()
+                        "jobs" -> JobsScreen()
+                        "logs" -> LogsScreen(arg)
+                        "settings" -> SettingsScreen()
+                        else -> HomeScreen()
+                    }
                 }
-            },
-        ) {
-            val arg = route.substringAfter('/', "").ifBlank { null }
-            key(route) {
-                when (top) {
-                    "overview" -> OverviewScreen()
-                    "storage" -> StorageScreen()
-                    "apps" -> if (arg != null) AppDetailScreen(arg) else AppsScreen()
-                    "devices" -> DevicesScreen()
-                    "files" -> FilesScreen(arg)
-                    "jobs" -> JobsScreen()
-                    "alerts" -> AlertsScreen()
-                    "settings" -> SettingsScreen()
-                    "logs" -> LogsScreen(arg)
-                    "more" -> MoreScreen(ALL.filter { it.route !in ON_BAR })
-                    else -> OverviewScreen()
-                }
+            }
+        }
+    }
+}
+
+/** Home / Apps / Files / Phone / Settings: brand icon and accent label on the chosen tab, over an accent-wash pill. */
+@Composable
+private fun BottomBar(selected: String, alertCount: Int, go: (String) -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    val x = PocketTheme.extra
+    Column(Modifier.fillMaxWidth()) {
+        HorizontalDivider(color = cs.outlineVariant)
+        NavigationBar(containerColor = cs.surfaceContainerHigh, tonalElevation = androidx.compose.ui.unit.Dp(0f)) {
+            TABS.forEach { t ->
+                NavigationBarItem(
+                    selected = selected == t.route,
+                    onClick = { go(t.route) },
+                    icon = {
+                        if (t.route == "home" && alertCount > 0) {
+                            BadgedBox(badge = { Badge(containerColor = x.warn, contentColor = cs.onTertiary) { Text("$alertCount") } }) { Icon(t.icon, null) }
+                        } else Icon(t.icon, null)
+                    },
+                    label = { Text(t.label, style = MaterialTheme.typography.labelSmall) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = x.brand, selectedTextColor = cs.primary, indicatorColor = cs.secondaryContainer,
+                        unselectedIconColor = x.faint, unselectedTextColor = x.faint,
+                    ),
+                )
             }
         }
     }

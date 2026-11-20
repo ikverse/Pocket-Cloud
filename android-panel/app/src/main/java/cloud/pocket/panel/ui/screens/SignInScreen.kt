@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
+import cloud.pocket.panel.ui.components.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -35,7 +35,7 @@ import cloud.pocket.panel.data.ApiException
 import cloud.pocket.panel.data.PocketApi
 import cloud.pocket.panel.data.Session
 import cloud.pocket.panel.data.body
-import cloud.pocket.panel.ui.theme.PocketBlue
+import cloud.pocket.panel.ui.components.MonogramTile
 import kotlinx.coroutines.launch
 
 /** First screen: the panel address and the admin password (or setting the password on first use). */
@@ -78,16 +78,16 @@ fun SignInScreen(session: Session, onSignedIn: () -> Unit) {
         }
     }
 
-    Scaffold { inner ->
+    Scaffold(containerColor = MaterialTheme.colorScheme.background) { inner ->
         Column(
             Modifier.padding(inner).fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
         ) {
-            Image(painterResource(R.drawable.pocket_logo), contentDescription = null, modifier = Modifier.size(72.dp))
-            Text("Pocket CloudServer", style = MaterialTheme.typography.headlineMedium, color = PocketBlue)
+            MonogramTile(72)
+            Text("Pocket Cloud", style = MaterialTheme.typography.headlineMedium)
             Text(if (setup) "Choose the admin password for the control panel." else "Sign in to your control panel.",
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Column(Modifier.widthIn(max = 420.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(address, { address = it }, label = { Text("Control panel address") }, singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth())

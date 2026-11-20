@@ -16,10 +16,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
+import cloud.pocket.panel.ui.components.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -27,10 +25,10 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.ListItem
+import cloud.pocket.panel.ui.components.PocketListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
+import cloud.pocket.panel.ui.components.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -53,6 +51,8 @@ import cloud.pocket.panel.data.dateTime
 import cloud.pocket.panel.data.gb
 import cloud.pocket.panel.ui.components.ConfirmDialog
 import cloud.pocket.panel.ui.components.LocalPanel
+import cloud.pocket.panel.ui.components.FileTile
+import cloud.pocket.panel.ui.theme.PocketTheme
 import cloud.pocket.panel.ui.components.SectionCard
 import cloud.pocket.panel.ui.components.TextInputDialog
 import cloud.pocket.panel.ui.components.rememberLoad
@@ -88,8 +88,9 @@ fun SdCardsCard(cd: J, reload: () -> Unit) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                 Text(when (job.s("kind")) { "swap" -> "Swapping the SD card"; "use" -> "Setting up the new card"; else -> "Putting the card back to work" },
                     style = MaterialTheme.typography.titleSmall)
-                if (job.i("total") > 0) LinearProgressIndicator(progress = { job.i("done").toFloat() / job.i("total") }, Modifier.fillMaxWidth().padding(vertical = 6.dp))
-                else LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 6.dp))
+                if (job.i("total") > 0) LinearProgressIndicator(progress = { job.i("done").toFloat() / job.i("total") }, Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                    color = PocketTheme.extra.brand, trackColor = cs.surfaceContainer)
+                else LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 6.dp), color = PocketTheme.extra.brand, trackColor = cs.surfaceContainer)
                 Text(job.s("step") + if (job.i("total") > 0) " · ${count(job.i("done"))} of ${count(job.i("total"))}" else "",
                     style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
             }
@@ -99,7 +100,7 @@ fun SdCardsCard(cd: J, reload: () -> Unit) {
         val a = cd.obj("active")
         val slot = cd.obj("slot")
         when {
-            cd.has("active") && a.b("present") -> ListItem(
+            cd.has("active") && a.b("present") -> PocketListItem(
                 headlineContent = { Text(a.s("name")) },
                 overlineContent = { Text("In use · ${a.s("volume")} · ${a.s("fs")}") },
                 supportingContent = { Text("${bytes(a.d("total"))}, ${bytes(a.d("free"))} free · ${speed(a, slow)}") },
@@ -110,7 +111,7 @@ fun SdCardsCard(cd: J, reload: () -> Unit) {
             !cd.has("slot") -> note("No SD card in the phone: everything is on internal storage. Put a card in to add room and a nightly copy.", cs.onSurfaceVariant)
         }
         if (cd.has("active") && a.b("present")) {
-            FlowRow(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { swap = true }, enabled = !running) { Text("Swap SD card") }
                 OutlinedButton(onClick = { rename = a }) { Text("Rename") }
             }
@@ -119,7 +120,7 @@ fun SdCardsCard(cd: J, reload: () -> Unit) {
             val card = slot.obj("card")
             when (slot.s("state")) {
                 "new" -> {
-                    ListItem(headlineContent = { Text("A new SD card is in the phone") },
+                    PocketListItem(headlineContent = { Text("A new SD card is in the phone") },
                         supportingContent = { Text("${slot.s("volume")} · ${slot.s("fs")} · ${bytes(slot.d("total"))}, ${bytes(slot.d("free"))} free. " +
                             "Setting it up checks its speed, sets the SD pool from its size and moves older files onto it.") }, colors = clearItem())
                     Button(onClick = { useNew = true }, enabled = !running, modifier = Modifier.padding(horizontal = 16.dp)) { Text("Use this card") }
@@ -129,15 +130,15 @@ fun SdCardsCard(cd: J, reload: () -> Unit) {
                     "within a few seconds.", cs.tertiary)
                 "archive", "shelved_here" -> {
                     if (slot.s("state") == "shelved_here") {
-                        ListItem(headlineContent = { Text("${card.s("name")} is ready to remove") },
+                        PocketListItem(headlineContent = { Text("${card.s("name")} is ready to remove") },
                             supportingContent = { Text("On the phone running Pocket CloudServer, unmount it (Settings › Device care › Storage › SD card › Unmount), " +
                                 "then take it out. Then put in the next card: a new one or an archive card.") }, colors = clearItem())
                     } else {
-                        ListItem(headlineContent = { Text("${card.s("name")}, an archive card, is in the phone") },
+                        PocketListItem(headlineContent = { Text("${card.s("name")}, an archive card, is in the phone") },
                             supportingContent = { Text("Shelved ${dateTime(card.d("shelved"))} · ${count(card.l("files"))} files, ${gb(card.d("bytes"))}. " +
                                 "Browse it and restore single files, or put it back to work.") }, colors = clearItem())
                     }
-                    FlowRow(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (slot.s("state") == "shelved_here") {
                             Button(onClick = {
                                 context.startActivity(Intent(Settings.ACTION_INTERNAL_STORAGE_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -151,9 +152,9 @@ fun SdCardsCard(cd: J, reload: () -> Unit) {
         }
         val shelf = cd.arr("shelf")
         if (shelf.isNotEmpty()) {
-            Text("On the shelf", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(start = 16.dp, top = 12.dp))
+            Text("On the shelf", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 16.dp, top = 14.dp, bottom = 2.dp))
             shelf.forEach { c ->
-                ListItem(
+                PocketListItem(
                     headlineContent = { Text(c.s("name")) },
                     supportingContent = { Text("Shelved ${dateTime(c.d("shelved"))} · ${count(c.l("files"))} files, ${gb(c.d("bytes"))}" +
                         if (c.s("note").isNotBlank()) " · ${c.s("note")}" else "") },
@@ -225,7 +226,7 @@ private fun SwapSheet(onDismiss: () -> Unit, onStarted: () -> Unit) {
             }
             if (groups.isEmpty()) item { Text("The card holds no app files.", Modifier.padding(16.dp)) }
             itemsIndexed(groups) { i, g ->
-                ListItem(
+                PocketListItem(
                     leadingContent = { Checkbox(carry[i], { carry[i] = it }) },
                     headlineContent = { Text("${g.s("app_name")} · ${g.s("folder").ifBlank { "(top level)" }}") },
                     supportingContent = { Text("${g.s("type").ifBlank { "(no type)" }} ${KIND[g.s("kind")]} · ${count(g.l("files"))} files · ${bytes(g.d("bytes"))} · " +
@@ -327,7 +328,7 @@ fun LazyListScope.cardFilesItems(d: J, apps: List<J>, cardApp: String?, cardPath
     val cardId = d.s("card")
     val names = apps.associate { it.s("id") to it.s("name") }
     if (shelf.isEmpty()) {
-        item { Text("No cards on the shelf yet. A card goes on the shelf when you swap it out (Storage › SD cards).",
+        item { Text("No cards on the shelf yet. A card goes on the shelf when you swap it out (Phone › SD cards).",
             color = MaterialTheme.colorScheme.onSurfaceVariant) }
     } else {
         val card = shelf.first { it.s("id") == cardId }
@@ -347,13 +348,13 @@ fun LazyListScope.cardFilesItems(d: J, apps: List<J>, cardApp: String?, cardPath
                     val spaces = f.arr("spaces")
                     if (spaces.isEmpty()) Text("No app files on ${card.s("name")}.", Modifier.padding(16.dp))
                     spaces.forEach { sp ->
-                        ListItem(headlineContent = { Text(sp.s("name")) },
+                        PocketListItem(headlineContent = { Text(sp.s("name")) },
                             supportingContent = { Text("${spaceLabel(sp.s("space"))} · ${count(sp.l("files"))} files · ${bytes(sp.d("size"))}") },
                             modifier = Modifier.clickable { onOpen(sp.s("app"), sp.s("space"), "") }, colors = clearItem())
                     }
                 } else {
                     val parts = cardPath.split("/").filter { it.isNotBlank() }
-                    ListItem(headlineContent = { Text("${names[cardApp] ?: cardApp} · ${spaceLabel(f.s("space"))}" + if (parts.isEmpty()) "" else " / " + parts.joinToString(" / ")) },
+                    PocketListItem(headlineContent = { Text("${names[cardApp] ?: cardApp} · ${spaceLabel(f.s("space"))}" + if (parts.isEmpty()) "" else " / " + parts.joinToString(" / ")) },
                         supportingContent = { Text("Back") },
                         modifier = Modifier.clickable {
                             if (parts.isEmpty()) onOpen(null, "shared", "") else onOpen(cardApp, f.s("space"), parts.dropLast(1).joinToString("/"))
@@ -361,13 +362,13 @@ fun LazyListScope.cardFilesItems(d: J, apps: List<J>, cardApp: String?, cardPath
                     val items = f.arr("items")
                     if (items.isEmpty()) Text("Empty.", Modifier.padding(16.dp))
                     items.forEach { x ->
-                        if (x.s("type") == "dir") ListItem(
-                            leadingContent = { Icon(Icons.Outlined.Folder, null) },
+                        if (x.s("type") == "dir") PocketListItem(
+                            leadingContent = { FileTile(null) },
                             headlineContent = { Text(x.s("name")) },
                             supportingContent = { Text("${count(x.l("files"))} files · ${bytes(x.d("size"))}") },
                             modifier = Modifier.clickable { onOpen(cardApp, f.s("space"), (parts + x.s("name")).joinToString("/")) }, colors = clearItem())
-                        else ListItem(
-                            leadingContent = { Icon(Icons.Outlined.Description, null) },
+                        else PocketListItem(
+                            leadingContent = { FileTile(x.s("name")) },
                             headlineContent = { Text(x.s("name")) },
                             supportingContent = { Text("${bytes(x.d("size"))} · ${dateTime(x.d("modified"))} · ${KIND[x.s("kind")] ?: ""}") },
                             trailingContent = {
@@ -406,7 +407,7 @@ private fun UnassignedRow(g: J, apps: List<J>, reload: () -> Unit) {
     val panel = LocalPanel.current
     var menu by remember { mutableStateOf(false) }
     var delete by remember { mutableStateOf(false) }
-    ListItem(
+    PocketListItem(
         headlineContent = { Text(g.s("app")) },
         supportingContent = { Text("${spaceLabel(g.s("space"))} · ${count(g.l("files"))} files · ${bytes(g.d("size"))}") },
         trailingContent = {

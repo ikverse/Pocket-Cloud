@@ -1,22 +1,18 @@
 package cloud.pocket.panel.ui.screens
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
+import cloud.pocket.panel.ui.components.PocketListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -27,7 +23,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import cloud.pocket.panel.data.J
 import cloud.pocket.panel.data.PocketApi
@@ -36,6 +31,13 @@ import cloud.pocket.panel.data.clock
 import cloud.pocket.panel.data.dateTime
 import cloud.pocket.panel.data.duration
 import cloud.pocket.panel.ui.components.LocalPanel
+import cloud.pocket.panel.ui.components.CodeBlock
+import cloud.pocket.panel.ui.components.OutlinedButton
+import cloud.pocket.panel.ui.components.Segmented
+import cloud.pocket.panel.ui.components.StatusDot
+import cloud.pocket.panel.ui.components.Tone
+import cloud.pocket.panel.ui.theme.PocketMono
+import cloud.pocket.panel.ui.theme.PocketTheme
 import cloud.pocket.panel.ui.components.PocketScreen
 import cloud.pocket.panel.ui.components.SectionCard
 import cloud.pocket.panel.ui.components.SliderSetting
@@ -52,18 +54,21 @@ fun JobsScreen() {
     val panel = LocalPanel.current
     val load = rememberLoad { get("/api/jobs") }
     val scope = rememberCoroutineScope()
-    PocketScreen("Jobs", load) { d ->
-        item {
-            Text("Scheduled work the phone does by itself. Times are set in Settings.", style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+    PocketScreen("Nightly jobs", load, lede = "Scheduled work the phone does by itself. Times are set in Settings.") { d ->
         item {
             SectionCard {
                 d.arr("jobs").forEach { j ->
                     val last = j.obj("last")
                     val ran = j.has("last")
-                    ListItem(
+                    PocketListItem(
                         headlineContent = { Text(j.s("name")) },
+                        leadingContent = { StatusDot(when {
+                            j.b("running") -> Tone.Accent
+                            !ran -> Tone.Plain
+                            last.s("result") == "fail" -> Tone.Bad
+                            last.s("result") == "warn" -> Tone.Warn
+                            else -> Tone.Ok
+                        }) },
                         supportingContent = {
                             Column {
                                 Text(j.s("what"))
@@ -73,14 +78,14 @@ fun JobsScreen() {
                                     ran -> "Last ${dateTime(last.d("started"))}: ${resultText(last.s("result"))} · ${last.s("detail")}"
                                     else -> "Not run yet"
                                 }, color = when (last.s("result")) {
-                                    "fail" -> MaterialTheme.colorScheme.error
-                                    "warn" -> MaterialTheme.colorScheme.tertiary
+                                    "fail" -> PocketTheme.extra.bad
+                                    "warn" -> PocketTheme.extra.warn
                                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                                 })
                             }
                         },
                         trailingContent = {
-                            TextButton(enabled = !j.b("running"), onClick = {
+                            OutlinedButton(enabled = !j.b("running"), small = true, onClick = {
                                 panel.act("Started.", onDone = { load.reload(); scope.launch { delay(2500); load.reload() } }) {
                                     panel.api.post("/api/jobs/${j.s("key")}/run")
                                 }
@@ -97,7 +102,7 @@ fun JobsScreen() {
                 if (h.isEmpty()) Text("No jobs have run yet.", modifier = Modifier.padding(16.dp))
                 h.forEach { j ->
                     val took = j.d("finished") - j.d("started")
-                    ListItem(
+                    PocketListItem(
                         headlineContent = { Text(j.s("job")) },
                         supportingContent = { Text("${resultText(j.s("result"))} · ${j.s("detail")}") },
                         overlineContent = { Text(dateTime(j.d("started")) + if (j.d("finished") > 0) " · took " + (if (took < 60) "${took.roundToInt()} s" else duration(took)) else "") },
@@ -115,17 +120,14 @@ fun AlertsScreen() {
     val load = rememberLoad { get("/api/alerts") }
     val enabled = remember { mutableStateMapOf<String, Boolean>() }
     val thresholds = remember { mutableStateMapOf<String, Float>() }
-    PocketScreen("Alerts", load, fab = {
+    PocketScreen("Alerts", load,
+        lede = "Alerts arrive as notifications on the phone running Pocket CloudServer and on this phone, and are listed here.", fab = {
         if (enabled.isNotEmpty() || thresholds.isNotEmpty()) ExtendedFloatingActionButton(onClick = {
             panel.act("Alert rules saved.", onDone = { enabled.clear(); thresholds.clear(); load.reload() }) {
                 panel.api.patch("/api/alerts", JSONObject().put("enabled", JSONObject(enabled.toMap())).put("thresholds", JSONObject(thresholds.toMap())))
             }
         }, icon = { Icon(Icons.Outlined.Save, null) }, text = { Text("Save rules") })
     }) { d ->
-        item {
-            Text("Alerts arrive as notifications on the phone running Pocket CloudServer and on this phone, and are listed here.",
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
         item {
             SectionCard("Active") {
                 val active = d.arr("active")
@@ -138,7 +140,7 @@ fun AlertsScreen() {
                 d.arr("rules").forEach { r ->
                     val kind = r.s("kind")
                     val on = enabled[kind] ?: r.b("enabled")
-                    ListItem(
+                    PocketListItem(
                         headlineContent = { Text(r.s("label")) },
                         supportingContent = { if (!r.has("threshold")) Text(r.s("text")) },
                         trailingContent = { Switch(checked = on, onCheckedChange = { enabled[kind] = it }) },
@@ -159,7 +161,7 @@ fun AlertsScreen() {
                 val h = d.arr("history")
                 if (h.isEmpty()) Text("No alerts yet.", modifier = Modifier.padding(16.dp))
                 h.forEach { a ->
-                    ListItem(
+                    PocketListItem(
                         headlineContent = { Text(a.s("text")) },
                         overlineContent = { Text(dateTime(a.d("raised")) + when {
                             !a.has("cleared") -> " · active"
@@ -190,26 +192,15 @@ fun LogsScreen(startApp: String?) {
         if (tab == 1) get("/api/logs/system?lines=500")
         else get("/api/logs?" + PocketApi.query("app" to app, "device" to device, "op" to op, "status" to status, "q" to q, "limit" to "300"))
     }
-    PocketScreen("Logs", load) { d ->
-        item {
-            PrimaryTabRow(selectedTabIndex = tab) {
-                Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Requests") })
-                Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("System") })
-            }
-        }
+    PocketScreen("Log", load) { d ->
+        item { Segmented(listOf("Requests", "System"), tab, Modifier.fillMaxWidth()) { tab = it } }
         if (tab == 1) {
-            item {
-                SectionCard {
-                    Text(d.strs("lines").joinToString("\n").ifBlank { "Nothing logged yet." }, fontFamily = FontFamily.Monospace,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.horizontalScroll(rememberScrollState()).padding(16.dp))
-                }
-            }
+            item { CodeBlock(d.strs("lines").joinToString("\n").ifBlank { "Nothing logged yet." }) }
             return@PocketScreen
         }
         val c = choices.data
         item {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 val apps = c?.arr("apps").orEmpty()
                 val devs = c?.arr("devices").orEmpty()
                 Chooser(apps.firstOrNull { it.s("id") == app }?.s("name") ?: "All apps",
@@ -229,14 +220,14 @@ fun LogsScreen(startApp: String?) {
             SectionCard(if (d.arr("items").size >= 300) "Latest 300 requests" else "${d.arr("items").size} requests") {
                 d.arr("items").forEach { r ->
                     val st = r.i("status")
-                    ListItem(
-                        headlineContent = { Text("${r.s("op")} ${r.s("key")}".trim()) },
+                    PocketListItem(
+                        headlineContent = { Text("${r.s("op")} ${r.s("key")}".trim(), style = PocketMono) },
                         overlineContent = { Text("${dateTime(r.d("ts"))} · ${r.s("app")} · ${r.s("device_name")}") },
                         supportingContent = { Text(listOfNotNull(
                             (r.d("bytes_in") + r.d("bytes_out")).takeIf { it > 0 }?.let { bytes(it) },
                             "${r.d("ms").roundToInt()} ms", r.s("note").ifBlank { null }).joinToString(" · ")) },
                         trailingContent = {
-                            Text("$st", color = if (st >= 400 && st != 404) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("$st", style = PocketMono, color = if (st >= 400 && st != 404) PocketTheme.extra.bad else MaterialTheme.colorScheme.onSurfaceVariant)
                         },
                         colors = clearItem(),
                     )

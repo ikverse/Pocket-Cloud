@@ -9,27 +9,20 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Tune
-import androidx.compose.material3.Card
 import androidx.compose.material3.Switch
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
+import cloud.pocket.panel.ui.components.PocketListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
+import cloud.pocket.panel.ui.components.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -64,6 +57,19 @@ import cloud.pocket.panel.ui.components.StatCard
 import cloud.pocket.panel.ui.components.StatRow
 import cloud.pocket.panel.ui.components.TextInputDialog
 import cloud.pocket.panel.ui.components.UsageBar
+import cloud.pocket.panel.ui.components.AppMark
+import cloud.pocket.panel.ui.components.Button
+import cloud.pocket.panel.ui.components.Note
+import cloud.pocket.panel.ui.components.PillBadge
+import cloud.pocket.panel.ui.components.PocketCard
+import cloud.pocket.panel.ui.components.Segmented
+import cloud.pocket.panel.ui.components.StatusDot
+import cloud.pocket.panel.ui.components.Tone
+import cloud.pocket.panel.ui.theme.PocketMono
+import cloud.pocket.panel.ui.theme.PocketTheme
+import cloud.pocket.panel.ui.theme.tabular
+import androidx.compose.foundation.layout.Row
+import androidx.compose.ui.Alignment
 import cloud.pocket.panel.ui.components.rememberLoad
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
@@ -77,9 +83,9 @@ fun AppsScreen() {
     val load = rememberLoad { get("/api/apps") }
     var sheetFor by remember { mutableStateOf<String?>(null) }
     var newApp by remember { mutableStateOf(false) }
-    PocketScreen("Apps", load, fab = {
-        ExtendedFloatingActionButton(onClick = { newApp = true }, icon = { Icon(Icons.Outlined.Add, null) }, text = { Text("New app") })
-    }) { d ->
+    PocketScreen("Apps", load,
+        lede = "Each of your projects gets its own space on the phone. A project shows up here the first time it connects.",
+        actions = { Button(onClick = { newApp = true }, small = true) { Text("New app") } }) { d ->
         val pool = d.obj("pool")
         val defaults = d.obj("defaults")
         item {
@@ -94,29 +100,48 @@ fun AppsScreen() {
                 }
             }
         }
+        item {
+            OutlinedButton(onClick = { panel.open("devices") }, modifier = Modifier.fillMaxWidth()) { Text("All devices") }
+        }
         val apps = d.arr("apps")
         if (apps.isEmpty()) item { Text("No apps yet. An app appears here the first time it connects, or create one with New app.",
             modifier = Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         apps.forEach { a ->
             item(key = a.s("id")) {
                 val pc = pct(a.d("used"), a.d("alloc"))
-                Card(Modifier.fillMaxWidth().clickable { panel.open("apps/" + a.s("id")) }) {
-                    ListItem(
-                        headlineContent = { Text(a.s("name") + if (a.s("status") != "active") " · waiting" else "") },
-                        overlineContent = { Text(a.s("id")) },
-                        supportingContent = {
-                            Column {
-                                Text(a.arr("devices").joinToString(", ") { it.s("name") }.ifBlank { "No devices yet" },
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text("${bytes(a.d("used"))} of ${gb(a.d("alloc"))} · ${count(a.l("requests"))} requests today · ${ago(a.d("last_used"))}")
-                                UsageBar(pc, a.d("warn_pct"), Modifier.padding(top = 6.dp))
+                val devices = a.arr("devices")
+                PocketCard(Modifier.clickable { panel.open("apps/" + a.s("id")) }) {
+                    Column(Modifier.padding(start = 16.dp, end = 4.dp, top = 14.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            AppMark(a.s("id"), a.s("name"))
+                            Column(Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(a.s("name"), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false))
+                                    if (a.s("status") != "active") PillBadge("Waiting", Tone.Warn)
+                                }
+                                Text(a.s("id"), style = PocketMono, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                        },
-                        trailingContent = {
                             IconButton(onClick = { sheetFor = a.s("id") }) { Icon(Icons.Outlined.Tune, "Change allocation") }
-                        },
-                        colors = clearItem(),
-                    )
+                        }
+                        Text(devices.joinToString(", ") { it.s("name") }.ifBlank { "No devices yet" } +
+                            if (devices.isEmpty()) "" else " · ${devices.size} device${if (devices.size == 1) "" else "s"}",
+                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(end = 12.dp))
+                        Column(Modifier.padding(end = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            UsageBar(pc, a.d("warn_pct"))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("${bytes(a.d("used"))} of ${gb(a.d("alloc"))}", style = MaterialTheme.typography.bodyMedium.tabular(),
+                                    modifier = Modifier.weight(1f))
+                                when {
+                                    pc >= 100 -> PillBadge("Full", Tone.Bad)
+                                    pc >= a.d("warn_pct") -> PillBadge("Filling up", Tone.Warn)
+                                    else -> Text("${count(a.l("requests"))} requests today · ${ago(a.d("last_used"))}",
+                                        style = MaterialTheme.typography.bodySmall, color = PocketTheme.extra.faint)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -164,7 +189,8 @@ fun AppDetailScreen(id: String) {
     val panel = LocalPanel.current
     val load = rememberLoad(id) { get("/api/apps/$id") }
     var confirm by remember { mutableStateOf<Ask?>(null) }
-    PocketScreen(load.data?.s("name") ?: "App", load, showBack = true) { a ->
+    PocketScreen(load.data?.s("name") ?: "App", load, showBack = true,
+        titleLeading = load.data?.let { a -> { AppMark(a.s("id"), a.s("name")) } }) { a ->
         val used = a.d("used")
         val pc = pct(used, a.d("alloc"))
         item {
@@ -175,19 +201,15 @@ fun AppDetailScreen(id: String) {
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (a.s("status") != "active") item {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
-                ListItem(headlineContent = { Text("This app is waiting for approval.") },
-                    trailingContent = { TextButton(onClick = { panel.act("App allowed.", onDone = { load.reload() }) {
-                        panel.api.patch("/api/apps/$id", body("status" to "active")) } }) { Text("Allow it") } },
-                    colors = clearItem())
+            Note("This app is waiting for approval.") {
+                Button(onClick = { panel.act("App allowed.", onDone = { load.reload() }) {
+                    panel.api.patch("/api/apps/$id", body("status" to "active")) } }, small = true) { Text("Allow it") }
             }
         }
         if (pc >= a.d("warn_pct")) item {
-            Card(colors = CardDefaults.cardColors(containerColor = if (pc >= 100) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.tertiaryContainer)) {
-                Text("At ${pc.roundToInt()}% of its ${gb(a.d("alloc"))} allocation. " +
-                    if (a.s("at_limit") == "refuse") "Uploads are refused at ${gb(a.d("alloc"))}." else "Uploads continue past it (warn only).",
-                    modifier = Modifier.padding(16.dp))
-            }
+            Note("At ${pc.roundToInt()}% of its ${gb(a.d("alloc"))} allocation. " +
+                if (a.s("at_limit") == "refuse") "Uploads are refused at ${gb(a.d("alloc"))}." else "Uploads continue past it (warn only).",
+                bad = pc >= 100)
         }
         item {
             StatRow({ StatCard("Used", bytes(used), "of ${gb(a.d("alloc"))} · ${count(a.l("files"))} files", it) },
@@ -217,31 +239,32 @@ fun AppDetailScreen(id: String) {
         item { AppSettings(a) { load.reload() } }
         item {
             SectionCard("Spaces") {
-                ListItem(headlineContent = { Text("shared") }, supportingContent = { Text("all devices") },
+                PocketListItem(headlineContent = { Text("shared") }, supportingContent = { Text("all devices") },
                     trailingContent = { Text(bytes(a.d("shared"))) }, colors = clearItem())
                 a.arr("devices").forEach { dv ->
-                    ListItem(headlineContent = { Text("device") }, supportingContent = { Text(dv.s("name")) },
+                    PocketListItem(headlineContent = { Text("device") }, supportingContent = { Text(dv.s("name")) },
                         trailingContent = { Text(bytes(dv.d("private"))) }, colors = clearItem())
                 }
             }
         }
         item {
             SectionCard("Actions") {
-                FlowRow(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { panel.open("files/$id") }) { Text("Browse files") }
                     OutlinedButton(onClick = { panel.open("logs/$id") }) { Text("Request log") }
                     OutlinedButton(onClick = {
                         confirm = Ask("New keys for all devices", "Every device of this app gets a new key; the libraries pick them up by themselves.",
                             "Make new keys") { panel.act("New keys made.") { panel.api.post("/api/apps/$id/rotate-keys") } }
                     }) { Text("New keys for all devices") }
-                    TextButton(onClick = {
+                    OutlinedButton(danger = true, onClick = {
                         confirm = Ask("Empty app", "Delete all ${count(a.l("files"))} files of ${a.s("name")}? They go into the undo first. The app and its devices stay.",
                             "Empty app", danger = true) { panel.act("Files moved to the undo.", onDone = { load.reload() }) { panel.api.post("/api/apps/$id/empty") } }
-                    }) { Text("Empty app", color = MaterialTheme.colorScheme.error) }
-                    if (!a.b("is_family")) TextButton(onClick = {
+                    }) { Text("Empty app") }
+                    if (!a.b("is_family")) OutlinedButton(danger = true, onClick = {
                         confirm = Ask("Delete app", "Delete ${a.s("name")}, its devices and keys? Its files go into the undo; the app itself can't be brought back. Its ${gb(a.d("alloc"))} return to the pool.",
                             "Delete app", danger = true) { panel.act("App deleted.", onDone = { panel.back() }) { panel.api.delete("/api/apps/$id") } }
-                    }) { Text("Delete app", color = MaterialTheme.colorScheme.error) }
+                    }) { Text("Delete app") }
                 }
             }
         }
@@ -253,8 +276,9 @@ fun AppDetailScreen(id: String) {
 private fun DeviceRow(app: String, dv: J, onChanged: () -> Unit, ask: (Ask) -> Unit) {
     val panel = LocalPanel.current
     var menu by remember { mutableStateOf(false) }
-    ListItem(
+    PocketListItem(
         headlineContent = { Text(dv.s("name") + if (dv.b("blocked")) " · blocked" else "") },
+        leadingContent = { StatusDot(if (dv.b("blocked")) Tone.Bad else Tone.Ok) },
         supportingContent = { Text("${dv.s("ip")}${dv.s("ip_alt").takeIf { it.isNotEmpty() }?.let { " · $it" } ?: ""} · key ${dv.s("key")} · ${bytes(dv.d("private"))} private · ${count(dv.l("requests"))} requests today · ${ago(dv.d("last_seen"))}") },
         trailingContent = {
             Box {
@@ -303,18 +327,16 @@ private fun AppSettings(a: J, onSaved: () -> Unit) {
         SliderSetting("Warn at", warn, 50f, 95f, "%", step = 5f) { warn = it }
         Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
             Text("At 100%", style = MaterialTheme.typography.bodyLarge)
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 4.dp)) {
-                listOf("refuse" to "Refuse uploads", "warn" to "Warn only").forEachIndexed { i, (v, label) ->
-                    SegmentedButton(selected = atLimit == v, onClick = { atLimit = v },
-                        shape = SegmentedButtonDefaults.itemShape(i, 2)) { Text(label) }
-                }
+            val limits = listOf("refuse" to "Refuse uploads", "warn" to "Warn only")
+            Segmented(limits.map { it.second }, limits.indexOfFirst { it.first == atLimit }, Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                atLimit = limits[it].first
             }
         }
         SliderSetting("Cap per device", cap, 0f, alloc, "GB", step = 0.5f, hint = "Limit on each private space · left end = none", none = true) { cap = it }
         SliderSetting("Reserve per device", reserve, 0f, alloc / deviceCount, "GB", step = 0.25f,
             hint = "Room each device can always use, whatever the others took · left end = none", none = true) { reserve = it }
         SliderSetting("Move to SD card after", move, 1f, 60f, "days", hint = "Days without changes") { move = it }
-        if (!a.b("is_family")) ListItem(headlineContent = { Text("Family bucket") },
+        if (!a.b("is_family")) PocketListItem(headlineContent = { Text("Family bucket") },
             supportingContent = { Text("A third bucket, family, shared by every app that is in the family") },
             trailingContent = { Switch(family, { family = it }) }, colors = clearItem())
         SaveRow {
