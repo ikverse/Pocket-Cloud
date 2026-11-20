@@ -2,4 +2,6 @@
 <resources>
     <!-- The launcher icon's tile (docs/brand.md section 1, "tile"); the same in light and dark. -->
     <color name="ic_launcher_background">#FF161D31</color>
+    <!-- The window behind Compose (brand.md "bg"), so a cold start does not flash another colour. -->
+    <color name="window_bg">#FFE9EDF5</color>
 </resources>

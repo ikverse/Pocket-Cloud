@@ -366,14 +366,27 @@ fun StatusDot(tone: Tone) {
     Box(Modifier.size(9.dp).clip(CircleShape).background(c))
 }
 
-// The mockups' app colours: each app keeps the same one, picked from its id.
-private val MARKS = listOf(0xFF0F8F7A, 0xFF3350E8, 0xFF8A4FD6, 0xFFD1344B, 0xFFC97A00, 0xFF4A5578).map { Color(it) }
+// App marks: each app keeps one colour, the same as on the web panel. These three must stay equal to
+// server/panel_web/panel.js MARKS, markColor and initials; MarkColorTest holds values computed by the JS.
+private val MARKS = listOf(0xFF3350E8, 0xFF0F8F7A, 0xFF8A4FD6, 0xFFD1344B, 0xFFB86E00, 0xFF4A5578, 0xFF1F7FB8, 0xFFB0479A).map { Color(it) }
+
+/** Which of the 8 mark colours an app gets: h = h * 31 + each UTF-16 code unit, kept as an unsigned 32-bit number. */
+fun markColorIndex(id: String): Int {
+    var h = 0L
+    for (c in id) h = (h * 31 + c.code) and 0xFFFFFFFFL
+    return (h % 8).toInt()
+}
+
+/** Up to two initials: dashes and underscores count as spaces, the first letter of each word, upper case. */
+fun markInitials(name: String): String =
+    name.replace(Regex("[-_]+"), " ").split(Regex("\\s+")).filter { it.isNotEmpty() }
+        .joinToString("") { it.take(1) }.take(2).uppercase().ifEmpty { "?" }
 
 /** An app's mark: its initials on a 40 dp tile in a colour of its own. */
 @Composable
 fun AppMark(id: String, name: String, size: Int = 40) {
-    val initials = name.split(' ', '-', '_').filter { it.isNotBlank() }.take(2).joinToString("") { it.take(1).uppercase() }.ifBlank { "?" }
-    val color = MARKS[Math.floorMod(id.hashCode(), MARKS.size)]
+    val initials = markInitials(name)
+    val color = MARKS[markColorIndex(id)]
     Box(Modifier.size(size.dp).clip(TileShape).background(color), contentAlignment = Alignment.Center) {
         Text(initials, color = Color.White, style = MaterialTheme.typography.titleMedium.copy(fontFamily = bricolage(15f), fontSize = 15.sp))
     }
