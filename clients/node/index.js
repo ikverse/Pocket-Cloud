@@ -25,10 +25,11 @@ const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
 const { S3Client } = require("@aws-sdk/client-s3");
+const errors = require("./lib/errors");
+
+const { PocketError, AccessDenied, Unreachable } = errors;
 
 const DEVICE_ID = /^[A-Za-z0-9-]{8,64}$/;
-
-class PocketError extends Error {}
 
 function homeDir(home) {
   return home || process.env.POCKET_HOME || path.join(os.homedir(), ".pocket");
@@ -75,7 +76,8 @@ function machineConfig(home, endpoint, enrollSecret) {
   if (!endpoint || !enrollSecret) {
     throw new PocketError(
       "This machine is not set up for Pocket Cloud. Save the machine setup file from the control panel's " +
-        `Settings page as ${path.join(home, "config")}, or set POCKET_ENDPOINT and POCKET_ENROLL_SECRET.`
+        `Settings page as ${path.join(home, "config")}, or set POCKET_ENDPOINT and POCKET_ENROLL_SECRET.`,
+      "NotConfigured"
     );
   }
   return { endpoint: endpoint.replace(/\/+$/, ""), enrollSecret };
@@ -84,7 +86,7 @@ function machineConfig(home, endpoint, enrollSecret) {
 function deviceIdFor(home, given) {
   given = given || process.env.POCKET_DEVICE_ID;
   if (given) {
-    if (!DEVICE_ID.test(given)) throw new PocketError("A device id uses 8-64 letters, digits and dashes.");
+    if (!DEVICE_ID.test(given)) throw new PocketError("A device id uses 8-64 letters, digits and dashes.", "BadRequest");
     return given;
   }
   const file = path.join(home, "device_id");
@@ -141,10 +143,13 @@ class Device {
         }),
       });
     } catch (e) {
-      throw new PocketError(`Pocket Cloud can't be reached at ${this.endpoint}: ${e.cause?.code || e.message}`);
+      throw new Unreachable(`Pocket Cloud can't be reached at ${this.endpoint}: ${e.cause?.code || e.message}`, "Unreachable");
     }
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new PocketError(`Pocket Cloud refused to enroll ${this.app}: ${body.message || res.status}`);
+    if (!res.ok) {
+      const msg = `Pocket Cloud refused to enroll ${this.app}: ${body.message || res.status}`;
+      throw res.status === 403 ? new AccessDenied(msg, body.error || "AccessDenied", 403) : new PocketError(msg, body.error || "PocketError", res.status);
+    }
     const creds = {
       endpoint: this.endpoint,
       device_id: this.deviceId,
@@ -204,4 +209,27 @@ async function connect(app, opts = {}) {
   return client;
 }
 
-module.exports = { connect, PocketError };
+const { makeApp } = require("./lib/app");
+
+/**
+ * Open app on Pocket Cloud through the plain /_pocket/ routes: files, change feed, releases, notifications.
+ * @param {string} name
+ * @param {{endpoint?: string, enrollSecret?: string, deviceId?: string, deviceName?: string, home?: string,
+ *          timeoutMs?: number}} [opts]
+ */
+const app = makeApp((name, opts) => new Device(name, opts));
+
+module.exports = {
+  connect,
+  app,
+  PocketError,
+  NotFound: errors.NotFound,
+  PreconditionFailed: errors.PreconditionFailed,
+  QuotaExceeded: errors.QuotaExceeded,
+  ReadOnly: errors.ReadOnly,
+  AccessDenied: errors.AccessDenied,
+  CursorExpired: errors.CursorExpired,
+  RateLimited: errors.RateLimited,
+  FeatureOff: errors.FeatureOff,
+  Unreachable: errors.Unreachable,
+};
