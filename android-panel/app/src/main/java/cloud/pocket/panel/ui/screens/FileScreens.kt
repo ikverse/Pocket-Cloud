@@ -14,20 +14,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowDropDown
 import androidx.compose.material.icons.outlined.CreateNewFolder
-import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Upload
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
+import cloud.pocket.panel.ui.components.PocketListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.PrimaryTabRow
-import androidx.compose.material3.Tab
+import cloud.pocket.panel.ui.components.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -50,6 +45,17 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import cloud.pocket.panel.ui.components.ConfirmDialog
 import cloud.pocket.panel.ui.components.LocalPanel
+import cloud.pocket.panel.ui.components.Button
+import cloud.pocket.panel.ui.components.FileTile
+import cloud.pocket.panel.ui.components.Segmented
+import cloud.pocket.panel.ui.components.StatusDot
+import cloud.pocket.panel.ui.components.Tone
+import cloud.pocket.panel.ui.theme.PocketMono
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import cloud.pocket.panel.ui.components.PocketScreen
 import cloud.pocket.panel.ui.components.SectionCard
 import cloud.pocket.panel.ui.components.TextInputDialog
@@ -63,19 +69,17 @@ fun DevicesScreen() {
     val load = rememberLoad { get("/api/devices") }
     var ask by remember { mutableStateOf<Ask?>(null) }
     var rename by remember { mutableStateOf<J?>(null) }
-    PocketScreen("Devices", load) { d ->
-        item {
-            Text("Every device that has connected, identified by its address on your private network. A device's keys only work from that address.",
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+    PocketScreen("Devices", load,
+        lede = "Every device that has connected, identified by its address on your private network. A device's keys only work from that address.") { d ->
         val devices = d.arr("devices")
         if (devices.isEmpty()) item { Text("No devices yet.") }
         item {
             SectionCard {
                 devices.forEach { dv ->
                     var menu by remember { mutableStateOf(false) }
-                    ListItem(
+                    PocketListItem(
                         headlineContent = { Text(dv.s("name") + if (dv.b("blocked")) " · blocked" else "") },
+                        leadingContent = { StatusDot(if (dv.b("blocked")) Tone.Bad else Tone.Ok) },
                         overlineContent = { Text(dv.s("ip") + (dv.s("ip_alt").takeIf { it.isNotEmpty() }?.let { " · $it" } ?: "")) },
                         supportingContent = {
                             Text(dv.arr("apps").joinToString(", ") { it.s("name") } +
@@ -122,7 +126,7 @@ fun Chooser(label: String, options: List<Pair<String, String>>, onPick: (String)
     var open by remember { mutableStateOf(false) }
     Box {
         OutlinedButton(onClick = { open = true }) {
-            Text(label)
+            Text(label, maxLines = 1)
             Icon(Icons.Outlined.ArrowDropDown, null)
         }
         DropdownMenu(open, { open = false }) {
@@ -180,19 +184,8 @@ fun FilesScreen(startApp: String?) {
         }
     }
     val current = apps.firstOrNull { it.s("id") == app }
-    PocketScreen("Files", load,
-        actions = { if (tab == 0 && app != null) IconButton(onClick = { newFolder = true }) { Icon(Icons.Outlined.CreateNewFolder, "New folder") } },
-        fab = {
-            if (tab == 0 && app != null) ExtendedFloatingActionButton(onClick = { upload.launch(arrayOf("*/*")) },
-                icon = { Icon(Icons.Outlined.Upload, null) }, text = { Text("Upload") })
-        }) { d ->
-        item {
-            PrimaryTabRow(selectedTabIndex = tab) {
-                Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Browse") })
-                Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Undo") })
-                Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("SD cards") })
-            }
-        }
+    PocketScreen("Files", load, lede = "Everything your apps keep on the phone.") { d ->
+        item { Segmented(listOf("Browse", "Deleted files", "SD cards"), tab, Modifier.fillMaxWidth()) { tab = it } }
         if (tab == 2) {
             cardFilesItems(d, apps, cardApp, cardPath,
                 onCard = { card = it; cardApp = null; cardPath = "" },
@@ -202,19 +195,19 @@ fun FilesScreen(startApp: String?) {
         }
         if (tab == 1) {
             val items = d.arr("items")
-            item { Text("Deleted and overwritten files are kept for ${d.i("undo_days")} days.", style = MaterialTheme.typography.bodyMedium,
+            item { Text("Deleted and overwritten files are kept for ${d.i("undo_days")} days and can be brought back.", style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant) }
             item {
                 SectionCard {
                     if (items.isEmpty()) Text("Nothing in the undo.", modifier = Modifier.padding(16.dp))
                     items.forEach { e ->
                         val names = apps.associate { it.s("id") to it.s("name") }
-                        ListItem(
-                            headlineContent = { Text(e.s("key")) },
+                        PocketListItem(
+                            headlineContent = { Text(e.s("key"), style = PocketMono) },
                             overlineContent = { Text("${names[e.s("app")] ?: e.s("app")} · ${if (e.s("space") == "shared") "shared" else "device"}") },
                             supportingContent = { Text("${e.s("reason")} ${dateTime(LocalDateTime.parse(e.s("time")).atZone(ZoneId.systemDefault()).toEpochSecond().toDouble())} by ${e.s("device_name")} · ${bytes(e.d("size"))} · kept ${e.i("days_left")} more days") },
                             trailingContent = {
-                                TextButton(onClick = {
+                                OutlinedButton(small = true, onClick = {
                                     panel.act("Restored ${e.s("key")}.", onDone = { load.reload() }) {
                                         panel.api.post("/api/undo/restore", body("storage" to e.s("storage"), "path" to e.s("path")))
                                     }
@@ -232,11 +225,21 @@ fun FilesScreen(startApp: String?) {
             return@PocketScreen
         }
         item {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Chooser(current.s("name"), apps.map { it.s("id") to it.s("name") }) { app = it; space = "shared"; path = "" }
                 val spaces = listOf("shared" to "shared · all devices") +
                     current.arr("devices").map { "device:" + it.s("uid") to "device · " + it.s("name") }
                 Chooser(spaces.firstOrNull { it.first == space }?.second ?: "shared", spaces) { space = it; path = "" }
+            }
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { newFolder = true }, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Outlined.CreateNewFolder, null, Modifier.size(18.dp)); Text("  New folder")
+                }
+                Button(onClick = { upload.launch(arrayOf("*/*")) }, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Outlined.Upload, null, Modifier.size(18.dp)); Text("  Upload")
+                }
             }
         }
         item {
@@ -256,20 +259,20 @@ fun FilesScreen(startApp: String?) {
                 items.forEach { x ->
                     if (x.s("type") == "dir") {
                         val where = x.strs("storages")
-                        ListItem(
-                            headlineContent = { Text(x.s("name")) },
+                        PocketListItem(
+                            headlineContent = { Text(x.s("name"), style = PocketMono.copy(fontWeight = FontWeight.Medium)) },
                             supportingContent = { Text("${count(x.l("files"))} files · ${bytes(x.d("size"))} · " +
                                 if (where.size > 1) "Internal + SD card" else if (where.firstOrNull() == "sd") "SD card" else "Internal") },
-                            leadingContent = { Icon(Icons.Outlined.Folder, null) },
+                            leadingContent = { FileTile(null) },
                             modifier = Modifier.clickable { path = (path.split("/").filter { it.isNotBlank() } + x.s("name")).joinToString("/") },
                             colors = clearItem(),
                         )
                     } else {
                         var menu by remember(x.s("key")) { mutableStateOf(false) }
-                        ListItem(
-                            headlineContent = { Text(x.s("name")) },
+                        PocketListItem(
+                            headlineContent = { Text(x.s("name"), style = PocketMono, maxLines = 2, overflow = TextOverflow.Ellipsis) },
                             supportingContent = { Text("${bytes(x.d("size"))} · ${dateTime(x.d("modified"))} · ${if (x.s("storage") == "sd") "SD card" else "Internal"}") },
-                            leadingContent = { Icon(Icons.Outlined.Description, null) },
+                            leadingContent = { FileTile(x.s("name")) },
                             trailingContent = {
                                 Box {
                                     IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.MoreVert, "File actions") }

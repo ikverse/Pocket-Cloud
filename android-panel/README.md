@@ -13,6 +13,13 @@ cd android-panel
 
 JDK: Android Studio's (`C:\Program Files\Android\Android Studio\jbr`). Minimum Android 10, target 36.
 
+## Look
+
+Colours, type and sizes come from `docs/brand.md` (the v2 design is `mockup/panel-v2.html`); the Compose
+scheme in `ui/theme` is mapped by hand from it, with dynamic colour off. The three fonts in `res/font`
+(Bricolage Grotesque, Instrument Sans, JetBrains Mono) are variable fonts under the SIL Open Font License,
+whose text is in `res/raw/ofl.txt` and shown in Settings › About › Fonts.
+
 ## Releasing
 
 The app updates itself from this repository's GitHub releases (Settings › About). A release is one

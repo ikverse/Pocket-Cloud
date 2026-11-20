@@ -1,17 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Themed-icon version (Android 13+): the cloud alone, coloured by the system. -->
+<!-- The "PC" monogram of docs/brand.md section 6: P and C outlined from Bricolage Grotesque (wght 700, opsz 96)
+     with fontTools, cap height 23.76 from y 42.12 to 65.88, 0.7 apart, the pair centred on x 54 (40.37 wide). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <group
-        android:translateX="32"
-        android:translateY="32"
-        android:scaleX="1.8333"
-        android:scaleY="1.8333">
-        <path
-            android:fillColor="#FF000000"
-            android:pathData="M19.35,10.04C18.67,6.59 15.64,4 12,4 9.11,4 6.6,5.64 5.35,8.04 2.34,8.36 0,10.91 0,14c0,3.31 2.69,6 6,6h13c2.76,0 5,-2.24 5,-5 0,-2.64 -2.05,-4.78 -4.65,-4.96z" />
-    </group>
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M37.53 58.87V54.65H42.28Q44.73 54.65 45.96 53.69Q47.19 52.72 47.19 50.50Q47.19 48.40 46.06 47.37Q44.94 46.34 42.64 46.34H37.53V42.12H42.98Q45.02 42.12 46.76 42.61Q48.51 43.10 49.80 44.13Q51.10 45.16 51.82 46.72Q52.54 48.29 52.54 50.47Q52.54 53.23 51.30 55.10Q50.06 56.98 47.68 57.92Q45.30 58.87 41.81 58.87ZM33.81 65.88V42.12H39.01V65.88Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M64.43 66.38Q61.51 66.38 59.39 65.43Q57.27 64.48 55.90 62.77Q54.53 61.07 53.89 58.85Q53.24 56.62 53.24 54.08Q53.24 51.46 53.91 49.19Q54.58 46.91 55.94 45.22Q57.29 43.52 59.37 42.57Q61.46 41.62 64.31 41.62Q66.78 41.62 68.59 42.33Q70.40 43.04 71.54 44.28Q72.67 45.52 73.14 47.14Q73.61 48.77 73.45 50.58L68.66 51.19Q68.69 49.55 68.17 48.38Q67.66 47.21 66.65 46.58Q65.65 45.94 64.16 45.94Q62.90 45.94 61.89 46.44Q60.88 46.93 60.16 47.92Q59.45 48.92 59.07 50.40Q58.69 51.88 58.69 53.86Q58.69 56.39 59.35 58.23Q60.00 60.07 61.31 61.07Q62.61 62.06 64.54 62.06Q66.29 62.06 67.35 61.27Q68.41 60.48 68.89 59.06Q69.36 57.64 69.23 55.80L74.15 56.26Q74.30 58.28 73.83 60.10Q73.36 61.91 72.18 63.34Q71.01 64.76 69.09 65.57Q67.17 66.38 64.43 66.38Z" />
 </vector>

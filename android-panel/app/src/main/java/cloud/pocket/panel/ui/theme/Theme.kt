@@ -1,66 +1,65 @@
 package cloud.pocket.panel.ui.theme
 
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Color
 
-private val LightColorScheme = lightColorScheme(
-    primary = primaryLight, onPrimary = onPrimaryLight, primaryContainer = primaryContainerLight,
-    onPrimaryContainer = onPrimaryContainerLight, inversePrimary = inversePrimaryLight,
-    secondary = secondaryLight, onSecondary = onSecondaryLight, secondaryContainer = secondaryContainerLight,
-    onSecondaryContainer = onSecondaryContainerLight, tertiary = tertiaryLight, onTertiary = onTertiaryLight,
-    tertiaryContainer = tertiaryContainerLight, onTertiaryContainer = onTertiaryContainerLight,
-    background = backgroundLight, onBackground = onBackgroundLight, surface = surfaceLight, onSurface = onSurfaceLight,
-    surfaceVariant = surfaceVariantLight, onSurfaceVariant = onSurfaceVariantLight, surfaceTint = surfaceTintLight,
-    inverseSurface = inverseSurfaceLight, inverseOnSurface = inverseOnSurfaceLight, error = errorLight,
-    onError = onErrorLight, errorContainer = errorContainerLight, onErrorContainer = onErrorContainerLight,
-    outline = outlineLight, outlineVariant = outlineVariantLight, scrim = scrimLight, surfaceBright = surfaceBrightLight,
-    surfaceDim = surfaceDimLight, surfaceContainerLowest = surfaceContainerLowestLight,
-    surfaceContainerLow = surfaceContainerLowLight, surfaceContainer = surfaceContainerLight,
-    surfaceContainerHigh = surfaceContainerHighLight, surfaceContainerHighest = surfaceContainerHighestLight,
+// docs/brand.md section 3: roles mapped by use, not by tone order. Dynamic colour is off on purpose, so the
+// brand shows on Android 12 and later too.
+
+private val LightColors = lightColorScheme(
+    primary = AccentLight, onPrimary = Color.White, primaryContainer = AccentWashLight, onPrimaryContainer = AccentLight,
+    inversePrimary = AccentDark,
+    secondary = InkLight, onSecondary = BgLight, secondaryContainer = AccentWashLight, onSecondaryContainer = AccentLight,
+    tertiary = WarnLight, onTertiary = Color.White, tertiaryContainer = WarnWashLight, onTertiaryContainer = InkLight,
+    background = BgLight, onBackground = InkLight, surface = BgLight, onSurface = InkLight,
+    surfaceVariant = SunkLight, onSurfaceVariant = SoftLight, surfaceTint = BgLight,
+    inverseSurface = InkLight, inverseOnSurface = BgLight,
+    error = BadLight, onError = Color.White, errorContainer = BadWashLight, onErrorContainer = BadLight,
+    outline = FaintLight, outlineVariant = LineLight, scrim = Color.Black,
+    surfaceBright = Color.White, surfaceDim = Color(0xFFDCE1EC),
+    surfaceContainerLowest = Color.White, surfaceContainerLow = SurfaceLight, surfaceContainer = SunkLight,
+    surfaceContainerHigh = SurfaceLight, surfaceContainerHighest = LineLight,
 )
 
-private val DarkColorScheme = darkColorScheme(
-    primary = primaryDark, onPrimary = onPrimaryDark, primaryContainer = primaryContainerDark,
-    onPrimaryContainer = onPrimaryContainerDark, inversePrimary = inversePrimaryDark,
-    secondary = secondaryDark, onSecondary = onSecondaryDark, secondaryContainer = secondaryContainerDark,
-    onSecondaryContainer = onSecondaryContainerDark, tertiary = tertiaryDark, onTertiary = onTertiaryDark,
-    tertiaryContainer = tertiaryContainerDark, onTertiaryContainer = onTertiaryContainerDark,
-    background = backgroundDark, onBackground = onBackgroundDark, surface = surfaceDark, onSurface = onSurfaceDark,
-    surfaceVariant = surfaceVariantDark, onSurfaceVariant = onSurfaceVariantDark, surfaceTint = surfaceTintDark,
-    inverseSurface = inverseSurfaceDark, inverseOnSurface = inverseOnSurfaceDark, error = errorDark,
-    onError = onErrorDark, errorContainer = errorContainerDark, onErrorContainer = onErrorContainerDark,
-    outline = outlineDark, outlineVariant = outlineVariantDark, scrim = scrimDark, surfaceBright = surfaceBrightDark,
-    surfaceDim = surfaceDimDark, surfaceContainerLowest = surfaceContainerLowestDark,
-    surfaceContainerLow = surfaceContainerLowDark, surfaceContainer = surfaceContainerDark,
-    surfaceContainerHigh = surfaceContainerHighDark, surfaceContainerHighest = surfaceContainerHighestDark,
+private val DarkColors = darkColorScheme(
+    primary = AccentDark, onPrimary = BgDark, primaryContainer = AccentWashDark, onPrimaryContainer = AccentDark,
+    inversePrimary = AccentLight,
+    secondary = InkDark, onSecondary = BgDark, secondaryContainer = AccentWashDark, onSecondaryContainer = AccentDark,
+    tertiary = WarnDark, onTertiary = BgDark, tertiaryContainer = WarnWashDark, onTertiaryContainer = InkDark,
+    background = BgDark, onBackground = InkDark, surface = BgDark, onSurface = InkDark,
+    surfaceVariant = SunkDark, onSurfaceVariant = SoftDark, surfaceTint = BgDark,
+    inverseSurface = InkDark, inverseOnSurface = BgDark,
+    error = BadDark, onError = BgDark, errorContainer = BadWashDark, onErrorContainer = BadDark,
+    outline = FaintDark, outlineVariant = LineDark, scrim = Color.Black,
+    surfaceBright = LineDark, surfaceDim = BgDark,
+    surfaceContainerLowest = Color(0xFF0A0F1B), surfaceContainerLow = SurfaceDark, surfaceContainer = SunkDark,
+    surfaceContainerHigh = SurfaceDark, surfaceContainerHighest = LineDark,
 )
+
+/** Colours Material has no role for. Read with PocketTheme.extra. */
+@Immutable
+data class PocketExtra(
+    val brand: Color, val faint: Color, val line: Color,
+    val warn: Color, val warnWash: Color, val ok: Color, val okWash: Color, val bad: Color, val badWash: Color,
+)
+
+private val LightExtra = PocketExtra(BrandLight, FaintLight, LineLight, WarnLight, WarnWashLight, OkLight, OkWashLight, BadLight, BadWashLight)
+private val DarkExtra = PocketExtra(BrandDark, FaintDark, LineDark, WarnDark, WarnWashDark, OkDark, OkWashDark, BadDark, BadWashDark)
+val LocalPocketExtra = staticCompositionLocalOf { LightExtra }
+
+object PocketTheme { val extra: PocketExtra @Composable get() = LocalPocketExtra.current }
 
 @Composable
-fun PocketCloudTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
-    content: @Composable () -> Unit
-) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
+fun PocketCloudTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalPocketExtra provides if (darkTheme) DarkExtra else LightExtra) {
+        MaterialTheme(colorScheme = if (darkTheme) DarkColors else LightColors,
+                      typography = PocketTypography, shapes = PocketShapes, content = content)
     }
-
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
 }

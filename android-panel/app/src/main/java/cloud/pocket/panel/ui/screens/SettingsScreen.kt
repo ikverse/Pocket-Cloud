@@ -6,7 +6,6 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -19,13 +18,10 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
+import cloud.pocket.panel.ui.components.PocketListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import cloud.pocket.panel.ui.components.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -39,7 +35,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import cloud.pocket.panel.data.GB
@@ -50,9 +45,13 @@ import cloud.pocket.panel.data.bytes
 import cloud.pocket.panel.data.gb
 import cloud.pocket.panel.ui.components.ConfirmDialog
 import cloud.pocket.panel.ui.components.LocalPanel
+import cloud.pocket.panel.ui.components.CodeBlock
+import cloud.pocket.panel.ui.components.Segmented
+import cloud.pocket.panel.ui.theme.PocketMono
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.unit.sp
 import cloud.pocket.panel.ui.components.PocketScreen
 import cloud.pocket.panel.ui.components.SectionCard
-import cloud.pocket.panel.ui.components.SectionTitle
 import cloud.pocket.panel.ui.components.SliderSetting
 import cloud.pocket.panel.ui.components.SliderMark
 import cloud.pocket.panel.ui.components.SliderMarks
@@ -78,6 +77,7 @@ fun SettingsScreen() {
     var ask by remember { mutableStateOf<Ask?>(null) }
     var timeFor by remember { mutableStateOf<String?>(null) }
     var passwordDialog by remember { mutableStateOf(false) }
+    var licences by remember { mutableStateOf(false) }
 
     fun copy(label: String, text: String) {
         context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText(label, text))
@@ -100,7 +100,7 @@ fun SettingsScreen() {
         }
     }
 
-    PocketScreen("Settings", load, fab = {
+    PocketScreen("Settings", load, lede = "How your machines reach the phone, and who is allowed in.", fab = {
         if (changes.isNotEmpty()) ExtendedFloatingActionButton(onClick = {
             val payload = JSONObject()
             changes.forEach { (key, v) ->
@@ -123,26 +123,25 @@ fun SettingsScreen() {
             SliderSetting(label, num(key), min, max, unit, step, hint) { changes[key] = if (step >= 1f) it.roundToInt() else it.toDouble() }
 
         @Composable
-        fun switch(key: String, label: String, hint: String) = ListItem(
+        fun switch(key: String, label: String, hint: String) = PocketListItem(
             headlineContent = { Text(label) }, supportingContent = { Text(hint) },
             trailingContent = { Switch(bool(key), { changes[key] = it }) }, colors = clearItem())
 
         @Composable
-        fun timeRow(key: String, label: String) = ListItem(headlineContent = { Text(label) },
-            trailingContent = { Text(str(key), style = MaterialTheme.typography.titleMedium) },
+        fun timeRow(key: String, label: String) = PocketListItem(headlineContent = { Text(label) },
+            trailingContent = { Text(str(key), style = PocketMono.copy(fontSize = 15.sp, color = MaterialTheme.colorScheme.primary)) },
             modifier = Modifier.clickable { timeFor = key }, colors = clearItem())
 
-        item { SectionTitle("Connection") }
         item {
-            SectionCard {
+            SectionCard("Connection") {
                 val addr = d.obj("addresses")
-                ListItem(headlineContent = { Text("Storage address") }, supportingContent = { Text("What apps connect to") },
-                    trailingContent = { Text(addr.s("storage")) }, colors = clearItem())
-                ListItem(headlineContent = { Text("Control panel address") }, trailingContent = { Text(addr.s("panel")) }, colors = clearItem())
-                ListItem(headlineContent = { Text("Enrollment secret") },
+                PocketListItem(headlineContent = { Text("Storage address") }, supportingContent = { Text("What apps connect to") },
+                    trailingContent = { Text(addr.s("storage"), style = PocketMono) }, colors = clearItem())
+                PocketListItem(headlineContent = { Text("Control panel address") }, trailingContent = { Text(addr.s("panel"), style = PocketMono) }, colors = clearItem())
+                PocketListItem(headlineContent = { Text("Enrollment secret") },
                     supportingContent = { Text(secret?.s("enroll_secret") ?: "Saved once on each machine; apps use it to enroll themselves") },
                     colors = clearItem())
-                FlowRow(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { panel.act(null) { secret = panel.api.get("/api/settings/enroll-secret") } }) { Text("Show") }
                     OutlinedButton(onClick = {
                         panel.act("Machine setup file copied.") {
@@ -157,21 +156,18 @@ fun SettingsScreen() {
                             copy("Pocket CloudServer CI secrets", ci.keys().joinToString("\n") { "$it=${ci.s(it)}" })
                         }
                     }) { Text("Copy as CI secrets") }
-                    TextButton(onClick = {
+                    OutlinedButton(danger = true, onClick = {
                         ask = Ask("Replace enrollment secret", "New machines then need the new secret. Apps already enrolled keep working.", "Replace", true) {
                             panel.act("Enrollment secret replaced.") { secret = panel.api.post("/api/settings/enroll-secret/rotate") }
                         }
-                    }) { Text("Replace", color = MaterialTheme.colorScheme.error) }
+                    }) { Text("Replace") }
                 }
-                Text((secret?.s("machine_config") ?: d.s("machine_config")).trim(), fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(16.dp).horizontalScroll(rememberScrollState()))
+                CodeBlock((secret?.s("machine_config") ?: d.s("machine_config")).trim(), Modifier.padding(16.dp))
             }
         }
 
-        item { SectionTitle("Storage pool") }
         item {
-            SectionCard {
+            SectionCard("Storage pool") {
                 val intUsed = pool.d("int_used") / GB
                 val sdUsed = pool.d("sd_used") / GB
                 val reserve = num("pool.reserve_gb")
@@ -200,63 +196,55 @@ fun SettingsScreen() {
             }
         }
 
-        item { SectionTitle("New apps") }
         item {
-            SectionCard {
+            SectionCard("New apps") {
                 switch("new_apps.auto_create", "Create apps automatically", "Otherwise new apps wait for you on the Apps page")
                 slider("new_apps.alloc_gb", "Default allocation", 0.5f, 20f, "GB", step = 0.5f, hint = "If the pool has less unpromised, a new app gets what is left")
                 slider("new_apps.warn_pct", "Warn at", 50f, 95f, "%", step = 5f)
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                     Text("At 100%", style = MaterialTheme.typography.bodyLarge)
-                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 4.dp)) {
-                        listOf("refuse" to "Refuse uploads", "warn" to "Warn only").forEachIndexed { i, (v, label) ->
-                            SegmentedButton(selected = str("new_apps.at_limit") == v, onClick = { changes["new_apps.at_limit"] = v },
-                                shape = SegmentedButtonDefaults.itemShape(i, 2)) { Text(label) }
-                        }
-                    }
+                    val limits = listOf("refuse" to "Refuse uploads", "warn" to "Warn only")
+                    Segmented(limits.map { it.second }, limits.indexOfFirst { it.first == str("new_apps.at_limit") },
+                        Modifier.fillMaxWidth().padding(top = 6.dp)) { changes["new_apps.at_limit"] = limits[it].first }
                 }
                 slider("new_apps.move_days", "Default move to SD card after", 1f, 60f, "days")
             }
         }
 
-        item { SectionTitle("Storage and nightly jobs") }
         item {
-            SectionCard {
+            SectionCard("Storage and nightly jobs") {
                 timeRow("jobs.nightly_time", "Nightly jobs start at")
                 slider("pool.early_move_pct", "Move early when the internal pool is", 50f, 100f, "% full", step = 5f, hint = "Oldest files first")
                 slider("jobs.skip_changed_hours", "Never move files changed in the last", 1f, 72f, "hours", hint = "Protects files still being written")
                 slider("jobs.undo_days", "Keep deleted and overwritten files for", 1f, 60f, "days", hint = "The undo period")
-                ListItem(headlineContent = { Text("Integrity check day") }, trailingContent = {
+                PocketListItem(headlineContent = { Text("Integrity check day") }, trailingContent = {
                     Chooser(WEEKDAYS[num("jobs.integrity_weekday").roundToInt().coerceIn(0, 6)], WEEKDAYS.mapIndexed { i, w -> "$i" to w }) {
                         changes["jobs.integrity_weekday"] = it.toInt()
                     }
                 }, colors = clearItem())
                 timeRow("jobs.integrity_time", "Integrity check time")
-                ListItem(headlineContent = { Text("SD card folder") }, supportingContent = { Text(s.s("sd_root")) }, colors = clearItem())
+                PocketListItem(headlineContent = { Text("SD card folder") }, supportingContent = { Text(s.s("sd_root")) }, colors = clearItem())
             }
         }
 
-        item { SectionTitle("Logs and statistics") }
         item {
-            SectionCard {
+            SectionCard("Logs and statistics") {
                 slider("logs.request_days", "Keep detailed request logs for", 7f, 365f, "days")
-                ListItem(headlineContent = { Text("Keep daily totals") }, trailingContent = { Text("Forever") }, colors = clearItem())
+                PocketListItem(headlineContent = { Text("Keep daily totals") }, trailingContent = { Text("Forever") }, colors = clearItem())
                 switch("logs.record_names", "Record file names in logs", "Off keeps only app, device, size and result")
             }
         }
 
-        item { SectionTitle("Health checks") }
         item {
-            SectionCard {
+            SectionCard("Health checks") {
                 slider("health.every_min", "Run every", 1f, 30f, "minutes")
-                ListItem(headlineContent = { Text("Alert thresholds") }, supportingContent = { Text("Per alert, on the Alerts page") },
+                PocketListItem(headlineContent = { Text("Alert thresholds") }, supportingContent = { Text("Per alert, on the Alerts page") },
                     modifier = Modifier.clickable { panel.open("alerts") }, colors = clearItem())
             }
         }
 
-        item { SectionTitle("Server") }
         item {
-            SectionCard {
+            SectionCard("Server") {
                 switch("server.read_only", "Read-only mode", "Apps can read but not write or delete")
                 switch("share.enabled", "Share links", "Apps can make links to single files for people outside Tailscale, through a Cloudflare tunnel. Only the shared file is reachable that way.")
                 switch("push.enabled", "Push notices to apps", "The phone's built-in push server (port 2586, Tailscale only, ntfy-style): apps learn of changes at once instead of polling.")
@@ -265,7 +253,7 @@ fun SettingsScreen() {
                 slider("server.upload_buffer_mb", "Large upload buffer", 16f, 256f, "MB", step = 16f, hint = "Memory for uploads sent in parts")
                 slider("server.multipart_expiry_h", "Unfinished uploads expire after", 12f, 336f, "hours", step = 12f)
                 slider("server.dir_cache_s", "Directory cache", 5f, 300f, "s", step = 5f, hint = "Refreshed automatically after each nightly move")
-                ListItem(headlineContent = { Text("Restart the storage server") }, supportingContent = { Text("Running requests finish first") },
+                PocketListItem(headlineContent = { Text("Restart the storage server") }, supportingContent = { Text("Running requests finish first") },
                     trailingContent = { TextButton(onClick = {
                         ask = Ask("Restart the storage server", "Running requests finish first; new ones wait a moment.", "Restart") {
                             panel.act("Storage server restarted.") { panel.api.post("/api/server/restart") }
@@ -274,30 +262,36 @@ fun SettingsScreen() {
             }
         }
 
-        item { SectionTitle("Control panel") }
         item {
-            SectionCard {
-                ListItem(headlineContent = { Text("Admin password") }, supportingContent = { Text("Changing it signs every browser and phone out") },
+            SectionCard("Control panel") {
+                PocketListItem(headlineContent = { Text("Admin password") }, supportingContent = { Text("Changing it signs every browser and phone out") },
                     trailingContent = { TextButton(onClick = { passwordDialog = true }) { Text("Change") } }, colors = clearItem())
-                ListItem(headlineContent = { Text("Settings backup") }, supportingContent = { Text("All settings, apps and device keys in one file") }, colors = clearItem())
-                FlowRow(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PocketListItem(headlineContent = { Text("Settings backup") }, supportingContent = { Text("All settings, apps and device keys in one file") }, colors = clearItem())
+                FlowRow(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { backupLauncher.launch("pocket-cloud-backup.json") }) { Text("Save backup") }
                     OutlinedButton(onClick = { restoreLauncher.launch(arrayOf("application/json", "*/*")) }) { Text("Restore from file") }
                 }
-                ListItem(headlineContent = { Text("Sign out of this phone") },
+                PocketListItem(headlineContent = { Text("Sign out of this phone") },
                     trailingContent = { TextButton(onClick = {
                         panel.act(null, onDone = { panel.signedOut() }) { runCatching { panel.api.post("/api/logout") } }
                     }) { Text("Sign out") } }, colors = clearItem())
             }
         }
 
-        item { SectionTitle("About") }
-        item { SectionCard { UpdateControls(Updates.of(context)) } }
+        item {
+            SectionCard("About") {
+                UpdateControls(Updates.of(context))
+                PocketListItem(headlineContent = { Text("Fonts") },
+                    supportingContent = { Text("Bricolage Grotesque, Instrument Sans and JetBrains Mono, under the SIL Open Font License") },
+                    modifier = Modifier.clickable { licences = true })
+            }
+        }
     }
 
     ask?.let { c -> cloud.pocket.panel.ui.components.ConfirmDialog(c.title, c.text, c.button, c.danger, onDismiss = { ask = null }, onConfirm = c.action) }
     timeFor?.let { key -> TimeDialog(load.data?.let { d -> (changes[key] ?: key.split(".").let { (a, b) -> d.obj("settings").obj(a).s(b) }).toString() } ?: "03:00",
         onDismiss = { timeFor = null }) { changes[key] = it } }
+    if (licences) LicenceDialog(onDismiss = { licences = false })
     if (passwordDialog) PasswordDialog(onDismiss = { passwordDialog = false }) { old, new ->
         panel.act("Password changed. Other browsers and phones are signed out.") {
             val r = panel.api.post("/api/password", body("old" to old, "new" to new))
@@ -334,4 +328,15 @@ private fun PasswordDialog(onDismiss: () -> Unit, onChange: (String, String) -> 
         },
         confirmButton = { TextButton(enabled = old.isNotBlank() && new.length >= 8 && new == again, onClick = { onDismiss(); onChange(old, new) }) { Text("Change") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
+}
+
+/** The fonts' licence (res/raw/ofl.txt), as the SIL Open Font License asks for it to travel with the fonts. */
+@Composable
+private fun LicenceDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val text = remember { context.resources.openRawResource(cloud.pocket.panel.R.raw.ofl).bufferedReader().use { it.readText() } }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("Fonts") },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        text = { Text(text, style = MaterialTheme.typography.bodySmall, modifier = Modifier.verticalScroll(rememberScrollState())) },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } })
 }

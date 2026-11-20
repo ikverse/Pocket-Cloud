@@ -23,7 +23,9 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.unit.dp
+import cloud.pocket.panel.ui.theme.PocketTheme
 import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
 import com.patrykandpatrick.vico.compose.cartesian.axis.rememberBottom
 import com.patrykandpatrick.vico.compose.cartesian.axis.rememberStart
@@ -49,10 +51,10 @@ import kotlin.math.roundToInt
 /** One line of a chart. */
 data class Series(val label: String, val values: List<Double>, val color: Color)
 
-/** Colours for chart lines and storage parts, all from the theme so they follow wallpaper colours. */
+/** Colours for chart lines: the brand colour first, then warn, soft and bad (brand.md section 2), then the rest. */
 @Composable
-fun seriesColors(): List<Color> = MaterialTheme.colorScheme.run {
-    listOf(primary, tertiary, secondary, error, outline, inversePrimary, primaryContainer, tertiaryContainer)
+fun seriesColors(): List<Color> = PocketTheme.extra.let { x ->
+    MaterialTheme.colorScheme.run { listOf(x.brand, x.warn, onSurfaceVariant, x.bad, x.ok, x.faint, onSurface, inversePrimary) }
 }
 
 /**
@@ -102,8 +104,8 @@ fun Legend(items: List<Pair<String, Color>>) {
     FlowRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         items.forEach { (label, color) ->
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(10.dp).clip(RoundedCornerShape(2.dp)).background(color))
-                Text(" $label", style = MaterialTheme.typography.labelMedium)
+                Box(Modifier.size(9.dp).clip(RoundedCornerShape(50)).background(color))
+                Text(" $label", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -118,16 +120,19 @@ data class Part(val label: String, val bytes: Double, val color: Color)
  */
 @Composable
 fun StorageSplitBar(parts: List<Part>, total: Double, limitAt: Double?, modifier: Modifier = Modifier) {
-    val track = MaterialTheme.colorScheme.surfaceVariant
+    val track = MaterialTheme.colorScheme.surfaceContainer
     val line = MaterialTheme.colorScheme.onSurface
-    Canvas(modifier.fillMaxWidth().height(20.dp).padding(vertical = 4.dp)) {
-        val r = CornerRadius(4.dp.toPx())
+    Canvas(modifier.fillMaxWidth().height(20.dp).padding(vertical = 5.dp)) {
+        val r = CornerRadius(size.height / 2)
         drawRoundRect(track, size = size, cornerRadius = r)
+        val pill = androidx.compose.ui.graphics.Path().apply { addRoundRect(androidx.compose.ui.geometry.RoundRect(0f, 0f, size.width, size.height, r)) }
         var x = 0f
-        parts.forEach { p ->
-            val w = (p.bytes / total * size.width).toFloat().coerceAtLeast(0f)
-            drawRect(p.color, topLeft = Offset(x, 0f), size = Size(w.coerceAtMost(size.width - x), size.height))
-            x += w
+        clipPath(pill) {
+            parts.forEach { p ->
+                val w = (p.bytes / total * size.width).toFloat().coerceAtLeast(0f)
+                drawRect(p.color, topLeft = Offset(x, 0f), size = Size(w.coerceAtMost(size.width - x), size.height))
+                x += w
+            }
         }
         limitAt?.let {
             val lx = (it / total * size.width).toFloat().coerceIn(1f, size.width - 1f)
