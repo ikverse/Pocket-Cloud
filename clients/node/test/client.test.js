@@ -14,7 +14,11 @@ const { SignatureV4 } = require("@smithy/signature-v4");
 const pocket = require("..");
 
 const ROOT = path.resolve(__dirname, "..", "..", "..");
-let server, lines, info, home;
+// the same rclone server/tests/helpers.py uses; without it the real server cannot start
+const RCLONE = process.env.POCKET_RCLONE || path.join(ROOT, "tools", "rclone", process.platform === "win32" ? "rclone.exe" : "rclone");
+const SKIP = fs.existsSync(RCLONE) ? false : `needs rclone at ${RCLONE} (or set POCKET_RCLONE)`;
+const t = (name, fn) => test(name, { skip: SKIP }, fn);
+let server, lines, info, home, exited;
 
 function command(cmd) {
   return new Promise((resolve) => {
@@ -24,22 +28,30 @@ function command(cmd) {
 }
 
 before(async () => {
+  if (SKIP) return;
   server = spawn("python", [path.join(ROOT, "server", "tests", "serve_for_tests.py")], { stdio: ["pipe", "pipe", "inherit"] });
+  exited = new Promise((resolve) => server.on("exit", resolve).on("error", resolve));
   lines = readline.createInterface({ input: server.stdout });
-  info = await new Promise((resolve) => lines.once("line", (l) => resolve(JSON.parse(l))));
+  // the first line once it is ready; fail at once if it dies first (its error is on stderr above)
+  info = await new Promise((resolve, reject) => {
+    lines.once("line", (l) => resolve(JSON.parse(l)));
+    server.once("error", (e) => reject(new Error(`could not start the test server: ${e.message}`)));
+    server.once("exit", (code) => reject(new Error(`the test server stopped before it was ready (exit ${code})`)));
+  });
   home = fs.mkdtempSync(path.join(os.tmpdir(), "pocket-node-"));
   fs.writeFileSync(path.join(home, "config"), `[pocket]\nendpoint = ${info.endpoint}\nenroll_secret = ${info.secret}\n`);
 });
 
 after(async () => {
-  server.stdin.write("quit\n");
-  await new Promise((resolve) => server.on("exit", resolve));
-  fs.rmSync(home, { recursive: true, force: true });
+  if (!server) return;
+  if (server.exitCode === null && !server.killed) server.stdin.write("quit\n");
+  await exited;
+  if (home) fs.rmSync(home, { recursive: true, force: true });
 });
 
 const text = async (out) => Buffer.from(await out.Body.transformToByteArray()).toString();
 
-test("first connect enrolls, and both buckets work", async () => {
+t("first connect enrolls, and both buckets work", async () => {
   const s3 = await pocket.connect("node-first", { home, deviceName: "Node test" });
   await s3.send(new PutObjectCommand({ Bucket: "shared", Key: "hello.txt", Body: "hello" }));
   await s3.send(new PutObjectCommand({ Bucket: "device", Key: "mine.txt", Body: "private" }));
@@ -50,7 +62,7 @@ test("first connect enrolls, and both buckets work", async () => {
   assert.deepStrictEqual(devices.map((d) => [d.uid, d.name]), [[id, "Node test"]]);
 });
 
-test("later connects reuse the saved key", async () => {
+t("later connects reuse the saved key", async () => {
   for (let i = 0; i < 3; i++) {
     const s3 = await pocket.connect("node-reuse", { home });
     await s3.send(new ListObjectsV2Command({ Bucket: "shared" }));
@@ -58,7 +70,7 @@ test("later connects reuse the saved key", async () => {
   assert.strictEqual((await command("enrolls node-reuse")).count, 1);
 });
 
-test("recovers when the device address changes", async () => {
+t("recovers when the device address changes", async () => {
   const s3 = await pocket.connect("node-moved", { home });
   await s3.send(new PutObjectCommand({ Bucket: "shared", Key: "a", Body: "1" }));
   await command("move node-moved");
@@ -68,7 +80,7 @@ test("recovers when the device address changes", async () => {
   assert.strictEqual((await command("enrolls node-moved")).count, 2);
 });
 
-test("recovers when the key is replaced", async () => {
+t("recovers when the key is replaced", async () => {
   const s3 = await pocket.connect("node-rotated", { home });
   await s3.send(new PutObjectCommand({ Bucket: "shared", Key: "a", Body: "1" }));
   const { keys } = await command("rotate node-rotated");
@@ -78,7 +90,7 @@ test("recovers when the key is replaced", async () => {
   assert.strictEqual(await text(await s3.send(new GetObjectCommand({ Bucket: "shared", Key: "b" }))), "2");
 });
 
-test("temporary link", async () => {
+t("temporary link", async () => {
   const s3 = await pocket.connect("node-link", { home });
   await s3.send(new PutObjectCommand({ Bucket: "shared", Key: "report.txt", Body: "by link" }));
   const saved = JSON.parse(fs.readFileSync(path.join(home, "apps", "node-link.json"), "utf8"));
@@ -104,7 +116,7 @@ test("temporary link", async () => {
   assert.strictEqual(await res.text(), "by link");
 });
 
-test("environment variables for CI", async () => {
+t("environment variables for CI", async () => {
   const ciHome = fs.mkdtempSync(path.join(os.tmpdir(), "pocket-node-ci-"));
   Object.assign(process.env, {
     POCKET_ENDPOINT: info.endpoint, POCKET_ENROLL_SECRET: info.secret,
@@ -121,7 +133,7 @@ test("environment variables for CI", async () => {
   }
 });
 
-test("clear errors", async () => {
+t("clear errors", async () => {
   const empty = fs.mkdtempSync(path.join(os.tmpdir(), "pocket-node-empty-"));
   try {
     await assert.rejects(pocket.connect("node-x", { home: empty }), /not set up/);
