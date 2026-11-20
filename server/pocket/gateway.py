@@ -10,6 +10,7 @@ accepted the request, except the undo copy, which is thrown away again if rclone
 import http.client
 import json
 import os
+import re
 import socket
 import socketserver
 import sys
@@ -19,9 +20,13 @@ import traceback
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote
+from xml.sax.saxutils import unescape
 
 from . import sigv4, undo
+from .filemeta import quoted
+from .files import FileRoutes, is_tailscale  # noqa: F401  (is_tailscale is used by server.py too)
 from .layout import FAMILY
+from .refuse import Refuse
 from .registry import RegistryError
 from .s3ops import BUCKETS, GROWS, WRITES, classify, error_xml, parse_delete_request, parse_delete_result
 
@@ -41,12 +46,6 @@ def _json_body(body):
     if not isinstance(out, dict):
         raise Refuse(400, "BadRequest", "The request body must be a JSON object.")
     return out
-
-
-class Refuse(Exception):
-    def __init__(self, status, code, message, headers=None):
-        super().__init__(message)
-        self.status, self.code, self.message, self.headers = status, code, message, headers or {}
 
 
 class GatewayServer(ThreadingHTTPServer):
@@ -72,7 +71,15 @@ class GatewayServer(ThreadingHTTPServer):
         self.core.log(f"connection from {client_address[0]} failed:\n" + traceback.format_exc())
 
 
-class Handler(BaseHTTPRequestHandler):
+def _xml_etag(body):
+    """The ETag in an S3 XML answer (CopyObjectResult, CompleteMultipartUploadResult), or None."""
+    m = re.search(rb"<ETag>(.*?)</ETag>", body or b"", re.S)
+    if not m:
+        return None
+    return unescape(m.group(1).decode("utf-8", "replace"), {"&quot;": '"', "&#34;": '"'}).strip() or None
+
+
+class Handler(FileRoutes, BaseHTTPRequestHandler):
     rbufsize = COPY_CHUNK             # read uploads from the socket in big pieces too
     protocol_version = "HTTP/1.1"
     server_version = "PocketCloud"
@@ -248,7 +255,9 @@ class Handler(BaseHTTPRequestHandler):
         if raw_path == "/_pocket/health" and self.command == "GET":
             ctx["op"] = "Health"
             ctx["status"] = 200
-            return self._json(200, {"ok": True, "version": core.version})
+            return self._json(200, {"ok": True, "version": core.version, "features": list(core.FEATURES)})
+        if self._v2(raw_path, raw_query, ctx):
+            return
         route = self.DEVICE_ROUTES.get((self.command, raw_path))
         if route:
             ctx["op"] = route[0]
@@ -404,13 +413,42 @@ class Handler(BaseHTTPRequestHandler):
                                             ("x-amz-request-id", self.rid)])
             self.wfile.flush()
             return
-        status, resp_body = self._forward(path_qs, fwd_headers, body, ctx, capture=(op == "DeleteObjects"))
-        ok = 200 <= status < 300
+        # small XML answers are held to read the ETag (copy, multipart) or what was deleted
+        def succeeded(status, resp_body):
+            return 200 <= status < 300 and not (op == "CompleteMultipartUpload" and b"<Error>" in (resp_body or b""))
+
+        def deleted_keys(status, resp_body):
+            if not succeeded(status, resp_body):
+                return set()
+            return set(kept_by_key) - set(parse_delete_result(resp_body or b"")[1])
+
+        def feed(status, resp_body):
+            """The change feed hears of a write before the client gets its answer, so a client that reads the
+            feed right after its own write always finds it."""
+            if not succeeded(status, resp_body):
+                return
+            if op == "DeleteObjects":
+                gone = deleted_keys(status, resp_body)
+                for k in kept_by_key:            # in the request's order
+                    if k in gone and kept_by_key[k]:      # a file was there
+                        core.meta.delete(owner["id"], space, k)
+                        core.record_change(owner["id"], space, k, "delete", "app", dev["uid"])
+            elif op in ("PutObject", "CopyObject", "CompleteMultipartUpload"):
+                etag = ctx.get("etag") if op == "PutObject" else _xml_etag(resp_body)
+                self._s3_put_record(owner["id"], space, key, dev["uid"], etag,
+                                    headers.get("content-type") if op == "PutObject" else None)
+            elif op == "DeleteObject" and kept:
+                core.meta.delete(owner["id"], space, key)
+                core.record_change(owner["id"], space, key, "delete", "app", dev["uid"])
+
+        status, resp_body = self._forward(path_qs, fwd_headers, body, ctx,
+                                          capture=op in ("DeleteObjects", "CopyObject", "CompleteMultipartUpload"),
+                                          before_send=feed if op in WRITES else None)
+        ok = succeeded(status, resp_body)
 
         # afterwards: keep or drop the undo copies, and adjust usage
         if op == "DeleteObjects":
-            deleted, failed = parse_delete_result(resp_body or b"") if ok else ([], list(kept_by_key))
-            gone = set(kept_by_key) - set(failed) if ok else set()
+            gone = deleted_keys(status, resp_body)
             for k, kk in kept_by_key.items():
                 if k in gone:
                     for storage, _, sz in kk:
@@ -429,6 +467,21 @@ class Handler(BaseHTTPRequestHandler):
             core.usage.add(owner["id"], space, "sd" if core.internal_full else "int", size)
         if op in CHANGES:
             core.notify_change(owner["id"])
+
+    def _s3_put_record(self, owner_id, space, key, uid, etag, ctype):
+        """After an S3 write: remember the ETag rclone gave (so parts uploads keep theirs) and feed the change."""
+        core = self.server.core
+        loc = self._locate(owner_id, space, key)
+        if not loc:
+            return
+        _, path, st = loc
+        if etag:
+            core.meta.set(owner_id, space, key, st.st_size, st.st_mtime_ns, etag, ctype)
+            etag = quoted(etag)
+        else:
+            core.meta.arrive(owner_id, space, key, st, ctype=ctype)
+            etag = core.meta.etag(owner_id, space, key, path, st)
+        core.record_change(owner_id, space, key, "put", "app", uid, st.st_size, etag)
 
     def _incoming_size(self, op, headers, app, dev):
         if op in ("CopyObject", "UploadPartCopy"):
@@ -529,9 +582,10 @@ class Handler(BaseHTTPRequestHandler):
         self.body_left = 0
         return sent
 
-    def _forward(self, path_qs, headers, body, ctx, capture=False):
+    def _forward(self, path_qs, headers, body, ctx, capture=False, before_send=None):
         """Send the request to rclone and stream the answer back. Reads (GET/HEAD) are retried once if
-        rclone fails before answering, which covers the instant a file is being moved to the SD card."""
+        rclone fails before answering, which covers the instant a file is being moved to the SD card.
+        before_send(status, captured body or None) runs once rclone has answered, before the client hears."""
         idempotent = self.command in ("GET", "HEAD")
         attempts = 2 if idempotent else 1
         if not idempotent:
@@ -555,11 +609,19 @@ class Handler(BaseHTTPRequestHandler):
                 self._upstream(fresh=True)
                 time.sleep(0.1)
                 continue
-            return self._relay(resp, ctx, capture)
+            return self._relay(resp, ctx, capture, before_send)
 
-    def _relay(self, resp, ctx, capture):
+    def _before_send(self, fn, status, data):
+        if fn:
+            try:
+                fn(status, data)
+            except Exception:
+                self.server.core.log("gateway: bookkeeping before answering failed:\n" + traceback.format_exc())
+
+    def _relay(self, resp, ctx, capture, before_send=None):
         status = resp.status
         ctx["status"] = status
+        ctx["etag"] = resp.getheader("ETag")
         out_headers = [(k, v) for k, v in resp.getheaders() if k.lower() not in HOP]
         has_len = any(k.lower() == "content-length" for k, _ in out_headers)
         head = self.command == "HEAD"
@@ -571,6 +633,7 @@ class Handler(BaseHTTPRequestHandler):
             data = resp.read()
             out_headers = [(k, v) for k, v in out_headers if k.lower() != "content-length"]
             out_headers.append(("Content-Length", str(len(data))))
+            self._before_send(before_send, status, data)
             self._send_head(status, resp.reason, out_headers)
             self.wfile.write(data)
             ctx["bytes_out"] = len(data)
@@ -580,6 +643,7 @@ class Handler(BaseHTTPRequestHandler):
         chunked = not has_len and not head and status not in (204, 304)
         if chunked:
             out_headers.append(("Transfer-Encoding", "chunked"))
+        self._before_send(before_send, status, None)
         self._send_head(status, resp.reason, out_headers)
         sent = 0
         if not head:

@@ -119,7 +119,8 @@ def _routes():
 
     @route("GET", "/api/status", auth=False)
     def status(h, core, m):
-        return {"ok": True, "version": core.version, "password_set": h.server.admin.has_password(),
+        return {"ok": True, "version": core.version, "features": list(core.FEATURES),
+                "password_set": h.server.admin.has_password(),
                 "signed_in": h.server.admin.valid(h.token())}
 
     @route("POST", "/api/setup", auth=False)
@@ -200,6 +201,8 @@ def _routes():
         ("PATCH", A, lambda h, c, m: api.app_update(c, m["app"], h.json_body())),
         ("DELETE", A, lambda h, c, m: api.app_delete(c, m["app"])),
         ("POST", A + "/empty", lambda h, c, m: api.app_empty(c, m["app"])),
+        ("GET", A + "/rules", lambda h, c, m: api.app_rules(c, m["app"])),
+        ("PATCH", A + "/rules", lambda h, c, m: api.app_rules_update(c, m["app"], h.json_body())),
         ("POST", A + "/rotate-keys", lambda h, c, m: api.app_rotate_all(c, m["app"])),
         ("POST", A + "/devices/" + D + "/rotate-key", lambda h, c, m: api.device_rotate(c, m["app"], m["uid"])),
         ("POST", A + "/devices/" + D + "/block", lambda h, c, m: api.device_block(c, m["uid"], h.json_body(), m["app"])),

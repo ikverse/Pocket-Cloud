@@ -362,11 +362,20 @@ class Jobs:
         self.stats.clear_alert("integrity", "")
         return "ok", f"{checked:,} files checked, 0 problems"
 
+    # ---- retention rules (retention.py), before the nightly copy ----
+    def retention(self, force=False):
+        """force: run from the control panel, which applies rules the nightly guard held back."""
+        from . import retention
+        return retention.run(self.core, force=force)
+
     # ---- logs ----
     def purge(self):
         n = self.stats.purge_requests(self.settings.get("logs.request_days"))
         s = self.registry.purge_shares()
-        return "ok", f"{n} request log rows older than {self.settings.get('logs.request_days')} days removed" + (f" · {s} expired share links removed" if s else "")
+        c = self.changes.prune() if getattr(self, "changes", None) else 0
+        return "ok", (f"{n} request log rows older than {self.settings.get('logs.request_days')} days removed"
+                      + (f" · {s} expired share links removed" if s else "")
+                      + (f" · {c} old change feed records removed" if c else ""))
 
 
 def _sha256(path):

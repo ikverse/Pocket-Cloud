@@ -162,20 +162,23 @@ def strip_presign(query_pairs):
 POCKET_SKEW = 15 * 60
 
 
-def _pocket_string(method, raw_path, raw_query, date, body):
-    return "\n".join([method.upper(), raw_path, raw_query or "", str(date), hashlib.sha256(body or b"").hexdigest()])
+def _pocket_string(method, raw_path, raw_query, date, body, body_hash=None):
+    digest = body_hash if body_hash is not None else hashlib.sha256(body or b"").hexdigest()
+    return "\n".join([method.upper(), raw_path, raw_query or "", str(date), digest])
 
 
-def sign_pocket(method, raw_path, raw_query, body, access_key, secret, now=None):
-    """Headers for a request to a /_pocket/ endpoint (used by the tests and the client libraries)."""
+def sign_pocket(method, raw_path, raw_query, body, access_key, secret, now=None, body_hash=None):
+    """Headers for a request to a /_pocket/ endpoint (used by the tests and the client libraries). body_hash:
+    the body's SHA-256 (hex) when the body itself isn't at hand, as for a streamed upload."""
     date = int(now if now is not None else datetime.datetime.now(datetime.timezone.utc).timestamp())
-    sig = hmac.new(secret.encode("utf-8"), _pocket_string(method, raw_path, raw_query, date, body).encode("utf-8"),
+    sig = hmac.new(secret.encode("utf-8"), _pocket_string(method, raw_path, raw_query, date, body, body_hash).encode("utf-8"),
                    hashlib.sha256).hexdigest()
     return {"x-pocket-key": access_key, "x-pocket-date": str(date), "x-pocket-sign": sig}
 
 
-def verify_pocket(method, raw_path, raw_query, headers, body, secret, now=None):
-    """Check a /_pocket/ request's headers (lower-cased names). Returns (ok, reason)."""
+def verify_pocket(method, raw_path, raw_query, headers, body, secret, now=None, body_hash=None):
+    """Check a /_pocket/ request's headers (lower-cased names). Returns (ok, reason). body_hash: check against
+    this SHA-256 (hex) instead of hashing body: an upload is checked before its body is read."""
     try:
         date = int(headers.get("x-pocket-date", ""))
     except ValueError:
@@ -183,7 +186,7 @@ def verify_pocket(method, raw_path, raw_query, headers, body, secret, now=None):
     now = now if now is not None else datetime.datetime.now(datetime.timezone.utc).timestamp()
     if abs(now - date) > POCKET_SKEW:
         return False, "RequestTimeTooSkewed"
-    want = hmac.new(secret.encode("utf-8"), _pocket_string(method, raw_path, raw_query, date, body).encode("utf-8"),
+    want = hmac.new(secret.encode("utf-8"), _pocket_string(method, raw_path, raw_query, date, body, body_hash).encode("utf-8"),
                     hashlib.sha256).hexdigest()
     if not hmac.compare_digest(want, headers.get("x-pocket-sign", "")):
         return False, "SignatureDoesNotMatch"
