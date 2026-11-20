@@ -12,7 +12,14 @@ import java.util.Date
 internal data class SyncFile(val size: Long, val mtime: Long, val etag: String)
 
 @Serializable
-internal data class SyncState(val cursor: String? = null, val files: Map<String, SyncFile> = emptyMap())
+internal data class SyncState(
+    val bucket: String? = null,
+    val prefix: String? = null,
+    val cursor: String? = null,
+    /** List everything next time instead of reading the feed (deletes were held back). */
+    val full: Boolean = false,
+    val files: Map<String, SyncFile> = emptyMap(),
+)
 
 /**
  * Two-way sync of a folder with a prefix (docs/app-api.md section 10):
@@ -43,7 +50,7 @@ internal class Sync(
         val old: SyncState? = withContext(Dispatchers.IO) {
             if (stateFile.isFile) runCatching { JSON.decodeFromString(SyncState.serializer(), stateFile.readText()) }.getOrNull()
             else null
-        }
+        }?.takeIf { it.bucket == bucket && it.prefix == prefix }   // a state for another target counts as a first run
         val local = withContext(Dispatchers.IO) { scanLocal() }
         val (cursor, remote) = remoteState(old)
         val next = (old?.files ?: emptyMap()).toMutableMap()
@@ -86,7 +93,9 @@ internal class Sync(
         }
         withContext(Dispatchers.IO) {
             val tmp = File(folder, ".pocket-tmp-state-" + System.nanoTime())
-            tmp.writeText(JSON.encodeToString(SyncState.serializer(), SyncState(cursor, next.toSortedMap())))
+            // with deletes held back, the next run lists everything so they are found again
+            tmp.writeText(JSON.encodeToString(SyncState.serializer(),
+                SyncState(bucket, prefix, cursor, full = blocked, files = next.toSortedMap())))
             replaceFile(tmp, stateFile)
         }
         if (blocked) {
@@ -111,7 +120,7 @@ internal class Sync(
     /** The cursor to save and the remote files (key -> ETag) under the prefix. */
     private suspend fun remoteState(old: SyncState?): Pair<String?, Map<String, String>> {
         val hasFeed = "changes" in pocket.features()
-        if (hasFeed && old?.cursor != null) {
+        if (hasFeed && old?.cursor != null && !old.full) {
             try {
                 val remote = old.files.mapValues { it.value.etag }.toMutableMap()
                 var cursor: String = old.cursor
@@ -180,7 +189,7 @@ internal class Sync(
 
     /** Keep the remote under its key; the local version goes up (and stays here) under a conflict name. */
     private suspend fun conflict(key: String, l: Local, next: MutableMap<String, SyncFile>) {
-        val cKey = conflictKey(key)
+        val cKey = freeConflictKey(key)
         val cFile = localFile(cKey)
         withContext(Dispatchers.IO) {
             cFile.parentFile?.mkdirs()
@@ -188,7 +197,7 @@ internal class Sync(
             cFile.setLastModified(l.mtime)
         }
         val body = withContext(Dispatchers.IO) { Body.FromFile(cFile, null) }
-        val e = pocket.putBody(cKey, body, bucket, null, modified = l.mtime / 1000.0)
+        val e = pocket.putBody(cKey, body, bucket, null, ifNoneMatch = true, modified = l.mtime / 1000.0)
         record(cKey, cFile, e.etag, next)
         uploaded += cKey
         download(key, next)
@@ -196,14 +205,28 @@ internal class Sync(
         conflicts += cKey
     }
 
-    private fun conflictKey(key: String): String {
+    private val usedNames = mutableSetOf<String>()
+
+    /** A conflict name not used here, on the server, or earlier in this run: ` 2`, ` 3`, ... when needed. */
+    private suspend fun freeConflictKey(key: String): String {
+        var n = 1
+        while (true) {
+            val k = conflictKey(key, n++)
+            if (k in usedNames || localFile(k).exists() || pocket.stat(k, bucket) != null) continue
+            usedNames += k
+            return k
+        }
+    }
+
+    private fun conflictKey(key: String, n: Int): String {
         val slash = key.lastIndexOf('/')
         val dir = key.substring(0, slash + 1)
         val name = key.substring(slash + 1)
         val dot = name.lastIndexOf('.').takeIf { it > 0 } ?: name.length
         val stamp = SimpleDateFormat("yyyy-MM-dd HHmm").format(Date((pocket.clock() * 1000).toLong()))
         val device = pocket.deviceName.replace('/', '-')
-        return "$dir${name.substring(0, dot)} (conflict $device $stamp)${name.substring(dot)}"
+        val count = if (n > 1) " $n" else ""
+        return "$dir${name.substring(0, dot)} (conflict $device $stamp)$count${name.substring(dot)}"
     }
 
     private suspend fun deleteRemote(key: String, etag: String, next: MutableMap<String, SyncFile>) {

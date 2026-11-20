@@ -4,6 +4,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.attribute.PosixFilePermissions
 import java.util.concurrent.ConcurrentHashMap
 
 /** A device's key for one app, as enrollment returns it. */
@@ -72,10 +74,21 @@ class FileCredentialStore(val home: File = defaultHome()) : CredentialStore {
 internal fun writePrivate(f: File, text: String) {
     f.parentFile?.mkdirs()
     val tmp = File(f.parentFile, ".tmp-" + System.nanoTime())
-    tmp.writeText(text)
-    tmp.setReadable(false, false); tmp.setReadable(true, true)
-    tmp.setWritable(false, false); tmp.setWritable(true, true)
-    replaceFile(tmp, f)
+    // owner-only before any byte is written
+    val path = tmp.toPath()
+    if ("posix" in path.fileSystem.supportedFileAttributeViews()) {
+        Files.createFile(path, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")))
+    } else {
+        Files.createFile(path)
+        tmp.setReadable(false, false); tmp.setReadable(true, true)
+        tmp.setWritable(false, false); tmp.setWritable(true, true)
+    }
+    try {
+        tmp.writeText(text)
+        replaceFile(tmp, f)
+    } finally {
+        tmp.delete()
+    }
 }
 
 /** Rename [from] over [to]; Windows will not rename over an existing file, so delete it first there. */

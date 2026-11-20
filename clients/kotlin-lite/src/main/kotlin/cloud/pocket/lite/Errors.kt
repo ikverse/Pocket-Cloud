@@ -42,7 +42,7 @@ internal fun errorFor(code: String, status: Int, message: String, cursor: String
     "Forbidden", "AppWaiting" -> AccessDeniedException(code, status, message)
     "CursorExpired" -> CursorExpiredException(code, status, message, cursor)
     "RateLimited" -> RateLimitedException(code, status, message, retryAfter)
-    "FeatureOff", "FeatureMissing" -> FeatureOffException(code, status, message)
+    "FeatureOff", "FeatureMissing", "SharesOff" -> FeatureOffException(code, status, message)
     "ServiceUnavailable", "Unreachable" -> UnreachableException(code, status, message)
     else -> when (status) {
         403 -> AccessDeniedException(code, status, message)

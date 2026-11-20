@@ -11,6 +11,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -113,5 +114,68 @@ class SyncTest {
         val r = p.sync(dir, prefix = "m/", allowMassDelete = true)
         assertEquals(60, r.deletedRemote.size)
         assertEquals(listOf("m/new.txt"), p.list("m/").toList().map { it.key })
+    }
+
+    @Test fun aNewPrefixIsAFirstRunAndDeletesNothing() = runBlocking<Unit> {
+        val p = open(newApp())
+        val dir = tmp.newFolder("np")
+        dir.write("a.txt", "a")
+        dir.write("b.txt", "b")
+        p.sync(dir, prefix = "notes/")
+        val r = p.sync(dir, prefix = "notes-v2/")
+        assertTrue(r.deletedRemote.isEmpty() && r.deletedLocal.isEmpty(), r.toString())
+        assertEquals(setOf("notes-v2/a.txt", "notes-v2/b.txt"), r.uploaded.toSet())
+        assertEquals(listOf("notes/a.txt", "notes/b.txt"), p.list("notes/").toList().map { it.key })
+    }
+
+    @Test fun aNewBucketDownloadsItsFiles() = runBlocking<Unit> {
+        val p = open(newApp())
+        val dir = tmp.newFolder("nb")
+        dir.write("a.txt", "a")
+        p.sync(dir)
+        p.put("mine.txt", "m".toByteArray(), bucket = "device")
+        val r = p.sync(dir, bucket = "device")
+        assertEquals(listOf("mine.txt"), r.downloaded)
+        assertEquals("m", File(dir, "mine.txt").readText())
+        assertContentEquals("a".toByteArray(), p.get("a.txt", bucket = "device"))
+    }
+
+    @Test fun heldBackLocalDeletesHappenOnTheAllowedRun() = runBlocking<Unit> {
+        val app = newApp()
+        val p = open(app, deviceId = "dev-aaaa-0001")
+        val other = open(app, deviceId = "dev-bbbb-0002")
+        val dir = tmp.newFolder("hl")
+        for (i in 1..60) dir.write("f$i.txt", "$i")
+        p.sync(dir)
+        for (i in 1..60) other.delete("f$i.txt")
+        assertEquals("MassDelete", assertFailsWith<PocketException> { p.sync(dir) }.code)
+        assertEquals(60, dir.listFiles()!!.count { it.name.endsWith(".txt") })
+        assertEquals("MassDelete", assertFailsWith<PocketException> { p.sync(dir) }.code)   // still pending
+        val r = p.sync(dir, allowMassDelete = true)
+        assertEquals(60, r.deletedLocal.size)
+        assertEquals(0, dir.listFiles()!!.count { it.name.endsWith(".txt") })
+        assertEquals(SyncResult(emptyList(), emptyList(), emptyList(), emptyList(), emptyList()), p.sync(dir))
+    }
+
+    @Test fun twoConflictsInOneMinuteKeepBothCopies() = runBlocking<Unit> {
+        val app = newApp()
+        val p = open(app, deviceId = "dev-aaaa-0001", deviceName = "Laptop")
+        val other = open(app, deviceId = "dev-bbbb-0002")
+        val t = System.currentTimeMillis() / 1000.0
+        p.clock = { t }
+        val dir = tmp.newFolder("cc")
+        dir.write("n.txt", "base")
+        p.sync(dir)
+        val names = mutableListOf<String>()
+        for (round in 1..2) {
+            other.put("n.txt", "remote $round".toByteArray())
+            File(dir, "n.txt").apply { writeText("local edit $round"); setLastModified(lastModified() + 5000L * round) }
+            names += p.sync(dir).conflicts[1]
+        }
+        assertNotEquals(names[0], names[1])
+        assertTrue(names[1].endsWith(") 2.txt"), names[1])
+        assertContentEquals("local edit 1".toByteArray(), p.get(names[0]))
+        assertContentEquals("local edit 2".toByteArray(), p.get(names[1]))
+        assertEquals("remote 2", File(dir, "n.txt").readText())
     }
 }

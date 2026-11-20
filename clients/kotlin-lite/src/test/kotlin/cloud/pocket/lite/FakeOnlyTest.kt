@@ -214,4 +214,22 @@ class FakeOnlyTest {
         p.session.backoffMs = longArrayOf(1, 1, 1)
         assertFailsWith<UnreachableException> { p.get("x") }.also { assertEquals("Unreachable", it.code) }
     }
+
+    @Test fun releasesFallBackToTheSignedRoute() = runBlocking<Unit> {
+        val app = newApp()
+        val p = open(app)
+        control("/_fake/app?app=$app", """{"publish": true}""")
+        val f = tmp.newFile("a b.apk").apply { writeText("bytes") }
+        p.publish(f, "1.0+7", platform = "android-arm64")
+        val keyless = p.releases().latest()!!.files.single()
+        assertEquals("${TestServer.url}/_pocket/pub/$app/1.0%2B7/a%20b.apk", keyless.url)
+        assertEquals("bytes", keyless.download(File(tmp.root, "k.apk")).readText())
+        // the key-less folder refuses (as on the LAN address): latest.json and the file come through the signed route
+        control("/_fake/fail", """{"route": "GET /_pocket/pub/", "status": 404, "code": "NotFound", "times": 2}""")
+        val rel = p.releases().latest()!!
+        assertEquals("bytes", rel.download(File(tmp.root, "s.apk")).readText())
+        val signed = requests().filter { it.s("path")!!.startsWith("/_pocket/files/shared/releases/") && it.s("method") == "GET" }
+        assertEquals(listOf("/_pocket/files/shared/releases/latest.json", "/_pocket/files/shared/releases/1.0%2B7/a%20b.apk"),
+            signed.map { it.s("path") }.takeLast(2))
+    }
 }

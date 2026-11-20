@@ -216,7 +216,8 @@ class PocketApp internal constructor(
             val entry = putFile("$folder$stamp-$name", tmp, bucket)
             val all = mutableListOf<Entry>()
             list(folder, bucket).collect { if (!it.key.substring(folder.length).contains('/')) all.add(it) }
-            for (old in all.sortedByDescending { it.key }.drop(keep)) {
+            // the file just written always stays (a device clock that is behind would sort it last)
+            for (old in all.filter { it.key != entry.key }.sortedByDescending { it.key }.drop(keep - 1)) {
                 try { delete(old.key, bucket) } catch (_: NotFoundException) {}
             }
             return entry
@@ -276,7 +277,7 @@ class PocketApp internal constructor(
         }
         val body = withContext(Dispatchers.IO) { Body.FromFile(file, null) }
         putBody("releases/$version/${file.name}", body, "shared", null, modified = file.lastModified() / 1000.0)
-        val mine = LatestFile(file.name, "${Encode.component(version)}/${Encode.component(file.name)}", body.length,
+        val mine = LatestFile(file.name, "$version/${file.name}", body.length,
             body.sha256, platform)
         while (true) {
             val old = try {
@@ -313,26 +314,34 @@ class PocketApp internal constructor(
     private suspend fun publishUrl(): String? = appInfo().publish.takeIf { it.enabled }?.url
 
     private suspend fun latest(platform: String?): Release? {
-        val pub = publishUrl()
-        val text = try {
-            if (pub != null && "publish" in features()) session.plainGet(pub + "latest.json").use { it.body.string() }
-            else session.call("GET", filePath("shared", "releases/latest.json"), retry = true).use { it.body.string() }
-        } catch (e: NotFoundException) {
-            return null
-        }
+        val pub = if ("publish" in features()) publishUrl() else null
+        // the key-less folder answers only on the Tailscale address: anything else falls back to the signed route
+        val text = pub?.let { orNull { session.plainGet(it + "latest.json").use { r -> r.body.string() } } }
+            ?: try {
+                session.call("GET", filePath("shared", "releases/latest.json"), retry = true).use { it.body.string() }
+            } catch (e: NotFoundException) {
+                return null
+            }
         val rel = toRelease(JSON.decodeFromString(LatestJson.serializer(), text), pub)
         if (platform == null) return rel
-        val files = rel.files.filter { it.platform == platform }
+        val files = rel.files.filter { it.platform == platform || it.platform == null || it.platform == "any" }
         return if (files.isEmpty()) null else Release(rel.app, rel.version, rel.published, rel.notes, files)
     }
 
+    /** null when the server refused or could not be reached (a fallback follows); cancellation still propagates. */
+    private suspend fun <T> orNull(block: suspend () -> T): T? = try { block() } catch (_: PocketException) { null }
+
     private fun toRelease(l: LatestJson, pub: String?) = Release(l.app, l.version, l.published, l.notes,
-        l.files.map { ReleaseFile(it.name, it.path, it.size, it.sha256, it.platform, pub?.plus(it.path), this) })
+        l.files.map { f ->
+            // latest.json keeps paths raw; each segment is percent-encoded only to build the URL
+            val url = pub?.plus(f.path.split('/').joinToString("/") { Encode.component(it) })
+            ReleaseFile(f.name, f.path, f.size, f.sha256, f.platform, url, this)
+        })
 
     internal suspend fun downloadRelease(f: ReleaseFile, dest: File): File {
         val target = if (dest.isDirectory) File(dest, f.name) else dest
-        val resp = if (f.url != null) session.plainGet(f.url)
-                   else session.call("GET", filePath("shared", "releases/" + percentDecode(f.path)), retry = true)
+        val resp = f.url?.let { orNull { session.plainGet(it) } }
+            ?: session.call("GET", filePath("shared", "releases/" + f.path), retry = true)
         resp.use {
             withContext(Dispatchers.IO) {
                 val dir = target.absoluteFile.parentFile.also { d -> d.mkdirs() }
@@ -409,18 +418,4 @@ class PocketApp internal constructor(
         const val LONG_POLL_S = 30
         val VERSION = Regex("^[A-Za-z0-9._+-]{1,64}$")
     }
-}
-
-internal fun percentDecode(s: String): String {
-    val out = java.io.ByteArrayOutputStream()
-    var i = 0
-    while (i < s.length) {
-        val c = s[i]
-        if (c == '%' && i + 2 < s.length) {
-            out.write(s.substring(i + 1, i + 3).toInt(16)); i += 3
-        } else {
-            out.write(c.toString().toByteArray()); i++
-        }
-    }
-    return out.toString(Charsets.UTF_8)
 }

@@ -289,4 +289,50 @@ class PocketAppTest {
         assertTrue("shared" in info.buckets && "device" in info.buckets)
         assertTrue(p.releasesUrl()!!.endsWith("/_pocket/pub/${p.app}/"))
     }
+
+    @Test fun releasePathsAreRawAndPlatformAnyMatches() = runBlocking<Unit> {
+        val p = open(newApp())
+        val any = tmp.newFile("my tool.zip").apply { writeText("zip") }
+        val win = tmp.newFile("my tool.exe").apply { writeText("exe") }
+        p.publish(any, "5.9.1+42", platform = "any")
+        p.publish(win, "5.9.1+42", platform = "windows-x64")
+        val text = p.get("releases/latest.json").decodeToString()
+        assertTrue("\"path\":\"5.9.1+42/my tool.zip\"" in text, text)
+        val rel = p.releases().latest(platform = "android-arm64")!!
+        assertEquals(listOf("my tool.zip"), rel.files.map { it.name })
+        assertEquals(listOf("my tool.exe", "my tool.zip"), p.releases().latest("windows-x64")!!.files.map { it.name }.sorted())
+        assertEquals("zip", rel.download(File(tmp.root, "got.zip")).readText())
+    }
+
+    @Test fun backupKeepsTheNewFileWhenTheClockIsBehind() = runBlocking<Unit> {
+        val p = open(newApp())
+        val db = tmp.newFile("c.db")
+        val base = System.currentTimeMillis() / 1000.0
+        for (i in 0 until 3) { p.clock = { base + i }; db.writeText("v$i"); p.backup(db, keep = 2) }
+        p.clock = { base - 600 }                         // ten minutes behind (still inside the signing skew)
+        db.writeText("behind")
+        val e = p.backup(db, keep = 2)
+        p.clock = { System.currentTimeMillis() / 1000.0 }
+        val left = p.list("backups/c.db/").toList().map { it.key }
+        assertEquals(2, left.size)
+        assertTrue(e.key in left, left.toString())
+        assertContentEquals("behind".toByteArray(), p.get(e.key))
+    }
+
+    @Test fun sharesOffIsFeatureOff() {
+        assertTrue(errorFor("SharesOff", 403, "off") is FeatureOffException)
+    }
+
+    @Test fun privateFilesAreOwnerOnly() {
+        val f = File(tmp.root, "sub/key.json")
+        writePrivate(f, "secret")
+        assertEquals("secret", f.readText())
+        writePrivate(f, "again")
+        assertEquals("again", f.readText())
+        assertTrue(f.parentFile.listFiles()!!.none { it.name.startsWith(".tmp-") })
+        val path = f.toPath()
+        if ("posix" in path.fileSystem.supportedFileAttributeViews()) {
+            assertEquals("rw-------", java.nio.file.attribute.PosixFilePermissions.toString(java.nio.file.Files.getPosixFilePermissions(path)))
+        }
+    }
 }
