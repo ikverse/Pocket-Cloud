@@ -41,7 +41,8 @@ const store = {
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const s13 = (t) => `<span class="soft small">${t}</span>`;
 
-// app marks: a stable colour per app, its initials on it
+// App marks: a stable colour per app, its initials on it. android-panel copies MARKS, markColor and initials exactly
+// (ui/components/Common.kt, pinned by MarkColorTest), so an app has one colour everywhere: change all three together.
 const MARKS = ["#3350e8", "#0f8f7a", "#8a4fd6", "#d1344b", "#b86e00", "#4a5578", "#1f7fb8", "#b0479a"];
 function markColor(id) { let h = 0; for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return MARKS[h % MARKS.length]; }
 const initials = (name) => String(name || "?").replace(/[-_]+/g, " ").split(/\s+/).filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "?";
@@ -196,11 +197,13 @@ document.addEventListener("change", (e) => {
 });
 
 // ---------------------------------------------------------------- charts (uPlot; colours from the theme)
-const CHARTS = {};
+const CHARTS = {}, CHART_ARGS = {};     // the arguments are kept so a theme change can redraw a chart in place
 const seriesColors = () => [css("--brand"), css("--warn"), css("--soft"), css("--bad"), css("--ok"), css("--faint")];
 function chart(key, el, series, data, opts = {}) {
   if (CHARTS[key]) { CHARTS[key].destroy(); delete CHARTS[key]; }
+  delete CHART_ARGS[key];
   if (!el || !window.uPlot) return;
+  CHART_ARGS[key] = [el, series, data, opts];
   const line = css("--line"), soft = css("--soft");
   const axis = { stroke: soft, grid: { stroke: line, width: 1 }, ticks: { stroke: line, width: 1 }, font: "12px " + css("--body") };
   const col = seriesColors();
@@ -222,14 +225,15 @@ function themeChoice() { const t = document.documentElement.dataset.theme; retur
 function setTheme(t) {
   if (t === "system") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
   store.set("pocketTheme", t === "system" ? null : t);
-  drawThemeSeg(); rerender();
+  drawThemeSeg(); recolorCharts();
 }
 const themeSeg = () => [["system", "System"], ["light", "Light"], ["dark", "Dark"]]
   .map(([k, l]) => `<button data-theme-set="${k}" aria-pressed="${themeChoice() === k}">${l}</button>`).join("");
 function drawThemeSeg() { $("theme-seg").innerHTML = themeSeg(); document.querySelectorAll(".theme-seg-here").forEach((x) => (x.innerHTML = themeSeg())); }
 document.addEventListener("click", (e) => { const b = e.target.closest("[data-theme-set]"); if (b) setTheme(b.dataset.themeSet); });
-matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => { if (themeChoice() === "system") rerender(); });
-function rerender() { if (!$("shell").hidden && $("modal").hidden) route(STATE.route, true); }
+matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => { if (themeChoice() === "system") recolorCharts(); });
+// Everything else follows the CSS variables by itself; only uPlot holds colours of its own. Forms and scroll stay.
+function recolorCharts() { for (const [k, a] of Object.entries(CHART_ARGS)) if (a[0].isConnected) chart(k, ...a); }
 
 // ---------------------------------------------------------------- navigation (in script: works even where the address can't change)
 const NAV = [["home", "Home"], ["apps", "Apps"], ["files", "Files"], ["phone", "Phone"], ["settings", "Settings"]];
@@ -281,7 +285,7 @@ function route(target, quiet) {
   const ticket = ++TICKET;
   const v = $("view");
   if (!quiet) { v.innerHTML = mobileTop() + `<p class="loading">Loading…</p>`; window.scrollTo(0, 0); }
-  Object.keys(CHARTS).forEach((k) => { CHARTS[k].destroy(); delete CHARTS[k]; });
+  Object.keys(CHARTS).forEach((k) => { CHARTS[k].destroy(); delete CHARTS[k]; delete CHART_ARGS[k]; });
   Promise.resolve(RENDER[page](rest.map(decodeURIComponent), ticket))
     .catch((e) => { if (e.status !== 401 && ticket === TICKET) paint(`<h1>${esc(NAV.find((x) => x[0] === STATE.top)?.[1] || "Pocket Cloud")}</h1><p class="note bad">${esc(e.message)}</p>`); });
 }
@@ -397,7 +401,13 @@ RENDER.home = async (args, ticket) => {
     if (cd.job?.running) sdRow("An SD card job is running", esc(cd.job.step || ""));
   }
   const hourly = Object.keys(o.hourly);
-  const nightly = jobs?.jobs?.find((j) => j.key !== "health" && j.last);
+  // last night as a whole: the daily jobs (not the health check or the weekly integrity check) from their newest run
+  const daily = (jobs?.jobs || []).filter((j) => j.key !== "health" && j.key !== "integrity" && /^Daily/.test(j.schedule || "") && j.last?.started);
+  const newest = Math.max(0, ...daily.map((j) => j.last.started));
+  const night = daily.filter((j) => j.last.started >= newest - 3 * 3600).map((j) => j.last.result);
+  const nFail = night.filter((r) => r === "fail").length, nWarn = night.filter((r) => r === "warn").length;
+  const nightly = newest ? `<a href="#phone/jobs">${dt(newest)}</a> <span class="${nFail ? "bad" : nWarn ? "warn" : "faint"}">· ${night.length} job${night.length === 1 ? "" : "s"}, ${
+    nFail ? `${nFail} failed` : nWarn ? `${nWarn} warning${nWarn === 1 ? "" : "s"}` : night.length === 1 ? "OK" : "all OK"}</span>` : '<span class="faint">not run yet</span>';
   paint(`
   <div class="hero">
     <div class="device">
@@ -421,7 +431,7 @@ RENDER.home = async (args, ticket) => {
       <p class="lede" style="margin-bottom:16px">${gbv(Math.max(0, P.total - P.used))} still free in the pool${hasSd ? " across the phone and its SD card" : " on the phone"}. ${n(o.files)} files, ${o.device_count} device${o.device_count === 1 ? "" : "s"}.</p>
       <div class="kv">
         <span>Up for</span><span>${dur(o.now - o.started_at)} <span class="faint">· since ${dt(o.started_at)}</span></span>
-        <span>Last nightly jobs</span><span>${nightly ? `${dt(nightly.last.started)} <span class="${nightly.last.result === "ok" ? "faint" : "warn"}">· ${esc(nightly.last.detail || nightly.last.result || "")}</span>` : '<span class="faint">not run yet</span>'}</span>
+        <span>Last nightly jobs</span><span>${nightly}</span>
         <span>Phone</span><span>${ph ? [ph.battery != null ? ph.battery + "% battery" : "", ph.plugged ? esc(ph.plugged) : "", ph.temp_c != null ? ph.temp_c.toFixed(1) + " °C" : ""].filter(Boolean).join(", ") || "—" : '<span class="faint">no readings (Termux:API)</span>'}</span>
         <span>Server</span><span class="mono">${esc(o.version)}</span>
       </div>
@@ -458,7 +468,7 @@ function allocSlider(a) {
   const min = Math.max(0.5, Math.ceil(a.used / GB * 2) / 2);
   const max = Math.max(min, Math.floor((a.alloc_max ?? a.alloc + STATE.unpromised) / GB * 2) / 2);
   return slider({ min, max, step: 0.5, value: a.alloc / GB, unit: "GB", cls: "sl-alloc", label: "Allocation",
-    marks: [{ v: a.used / GB, label: "in use " + fb(a.used), color: css("--soft") }, { k: "warn", v: a.alloc / GB * a.warn_pct / 100, label: "warning", color: css("--warn") }] });
+    marks: [{ v: a.used / GB, label: "in use " + fb(a.used), color: "var(--soft)" }, { k: "warn", v: a.alloc / GB * a.warn_pct / 100, label: "warning", color: "var(--warn)" }] });
 }
 async function openAlloc(id) {
   const a = await act(() => api("GET", "/api/apps/" + id));
@@ -679,24 +689,27 @@ function bindRules(a, R) {
 const WIZ = { kind: "python", goals: new Set(["backup"]), app: "" };
 const SNIP = {
   android: {
-    setup: '// Kotlin-lite library (clients/kotlin-lite), no AWS SDK\nval pocket = Pocket.connect(context, app = "APP")',
-    backup: '// Back up a file and keep the 7 newest copies\npocket.backup(File(filesDir, "ledger.db"), keep = 7)',
-    sync: '// Two-way sync of a folder between your devices\npocket.sync(File(filesDir, "sync"), bucket = "shared")\npocket.changes().collect { change -> reload(change.key) }',
-    updates: '// Read the newest release from the publish folder\nval latest = pocket.releases().latest()\nif (latest != null && latest.version != BuildConfig.VERSION_NAME) latest.download(File(cacheDir, "update.apk"))',
+    // signatures as in clients/kotlin-lite (Pocket.connect, PocketApp): plain JVM, so no Context argument
+    setup: '// Kotlin-lite library (clients/kotlin-lite): no AWS SDK, suspend functions\nval pocket = Pocket.connect(\n    app = "APP",\n    endpoint = BuildConfig.POCKET_ENDPOINT,          // from Settings › Set up another machine\n    enrollSecret = BuildConfig.POCKET_ENROLL_SECRET,\n    deviceName = Build.MODEL,\n    store = KeystoreCredentialStore(context),        // your CredentialStore (see the library README)\n)',
+    backup: '// Back up a file and keep the 7 newest copies\npocket.backup(context.getDatabasePath("ledger.db"), keep = 7)',
+    sync: '// Two-way sync of a folder between your devices\npocket.sync(File(context.filesDir, "sync"))\npocket.changes().collect { change -> reload(change.key) }',
+    updates: '// Read the newest release from the publish folder\npocket.releases().latest("android-arm64")\n    ?.takeIf { it.version != BuildConfig.VERSION_NAME }\n    ?.download(context.cacheDir)',
     notify: '// Send a message to your other devices\npocket.notify("6 new calls", title = "Evening calls are ready")',
   },
   python: {
-    setup: '# pip install ./clients/python   (pocket_cloud)\nimport pocket_cloud as pocket\n\napp = pocket.app("APP")',
+    // signatures as in clients/python (pocket_cloud.app, App)
+    setup: '# pip install -e clients/python      (from the Pocket-Cloud folder)\nimport pocket_cloud as pocket\n\napp = pocket.app("APP")',
     backup: '# Back up a file and keep the 7 newest copies\napp.backup("data/station.db", keep=7)',
-    sync: '# Two-way sync of a folder between your devices\napp.sync("data/research")\nfor change in app.changes():\n    reload(change.key)',
+    sync: '# Two-way sync of a folder between your devices\napp.sync("data/research")\nwatch = app.on_change(lambda change: reload(change.key))   # watch.stop() to end',
     updates: '# Publish a release for your other devices\napp.publish("dist/Setup-1.2.0.exe", version="1.2.0")',
     notify: '# Send a message to your phone\napp.notify("Video is ready to review", title="Village")',
   },
   node: {
-    setup: '// npm install ./clients/node   (pocket-cloud)\nconst pocket = require("pocket-cloud");\n\nconst app = await pocket.app("APP");',
+    // signatures as in clients/node (pocket.app, lib/app.js); releasesUrl() is async
+    setup: '// npm install <path to Pocket-Cloud>/clients/node\nconst pocket = require("pocket-cloud");\n\nconst app = await pocket.app("APP");',
     backup: '// Back up a file and keep the 7 newest copies\nawait app.backup(path.join(userData, "layouts.json"), { keep: 7 });',
     sync: '// Two-way sync of a folder between your devices\nawait app.sync(path.join(userData, "recordings"));\napp.onChange((change) => reload(change.key));',
-    updates: '// electron-updater: read releases from the publish folder\nautoUpdater.setFeedURL({ provider: "generic", url: app.releasesUrl() });',
+    updates: '// electron-updater: read releases from the publish folder\nconst url = await app.releasesUrl();\nautoUpdater.setFeedURL({ provider: "generic", url });',
     notify: '// Send a message to your other devices\nawait app.notify("Lights out in 10 minutes", { title: "RaceWall" });',
   },
 };
@@ -1083,7 +1096,7 @@ async function renderStorage(ticket) {
   const { internal: I, sd: S, pool: P } = d;
   const pct = (x, cap) => (x / cap * 100).toFixed(2);
   const left = d.growth_per_day > 0 ? (P.sd_limit - P.sd_used) / d.growth_per_day : null;
-  const c = { other: css("--faint"), data: css("--brand"), sys: css("--soft"), copy: css("--warn"), undo: css("--bad"), free: css("--sunk"), lim: css("--ink") };
+  const c = { other: "var(--faint)", data: "var(--brand)", sys: "var(--soft)", copy: "var(--warn)", undo: "var(--bad)", free: "var(--sunk)", lim: "var(--ink)" };
   const prow = (label, limit, used) => `<tr><td>${label}</td><td class="num">${gbv(limit)}</td><td class="num">${fb(used)}</td><td style="min-width:140px">${meter(used, limit, 80)}</td><td class="num">${fb(Math.max(0, limit - used))}</td></tr>`;
   paint(`
   ${crumb([["phone", "Phone"], [null, "Storage"]])}
@@ -1232,7 +1245,7 @@ RENDER.settings = async (args, ticket) => {
     <section class="card" id="sec-setup"><h2>Set up another machine</h2>
       <p class="soft" style="margin-bottom:12px">Save this as <span class="mono">%USERPROFILE%\\.pocket\\config</span> (Windows) or <span class="mono">~/.pocket/config</span> on a new machine; the Pocket library reads it. Apps use the enroll secret to enroll themselves.</p>
       <pre id="mcfg">${esc(d.machine_config)}</pre>
-      <div class="actions" style="margin-top:12px"><button class="btn" id="sec-show">Show the secret</button><button class="btn" id="cfg-copy">Copy</button><button class="btn" id="ci-copy">Copy as CI secrets</button><button class="btn" id="sec-copy">Copy the secret only</button><button class="btn danger" id="sec-new">Replace the secret</button></div>
+      <div class="actions" style="margin-top:12px"><button class="btn primary" id="qr-show">Show QR code</button><button class="btn" id="sec-show">Show the secret</button><button class="btn" id="cfg-copy">Copy</button><button class="btn" id="ci-copy">Copy as CI secrets</button><button class="btn" id="sec-copy">Copy the secret only</button><button class="btn danger" id="sec-new">Replace the secret</button></div>
       <p class="soft small" style="margin-top:10px">Enroll secret: <span class="mono" id="sec">••••••••••••••••••••••••</span></p>
     </section>
     <section class="card"><h2>Connection</h2>
@@ -1251,8 +1264,8 @@ RENDER.settings = async (args, ticket) => {
       </table></div>
     </section>
     <section class="card span2" id="sec-pool"><h2>Storage pool</h2><div class="form"><div data-pool>
-      ${frow("Internal storage for Pocket", "Recent files, logs and statistics", slider({ min: Math.ceil(P.int_used / GB), max: Math.max(Math.ceil(P.int_used / GB), Math.floor(P.int_max / GB), Math.round(P.int_limit / GB)), value: Math.round(P.int_limit / GB), unit: "GB", cls: "sl-pint", key: "pool.internal_gb", label: "Internal storage for Pocket", marks: [{ v: P.int_used / GB, label: "in use " + fb(P.int_used), color: css("--soft") }] }))}
-      ${frow("SD card for Pocket", "Older files, the nightly copy and the undo", slider({ min: Math.ceil(P.sd_used / GB), max: Math.max(Math.ceil(P.sd_used / GB), Math.floor(P.sd_max / GB), Math.round(P.sd_limit / GB)), value: Math.round(P.sd_limit / GB), unit: "GB", cls: "sl-psd", key: "pool.sd_gb", label: "SD card for Pocket", marks: [{ v: P.sd_used / GB, label: "in use " + fb(P.sd_used), color: css("--soft") }] }))}
+      ${frow("Internal storage for Pocket", "Recent files, logs and statistics", slider({ min: Math.ceil(P.int_used / GB), max: Math.max(Math.ceil(P.int_used / GB), Math.floor(P.int_max / GB), Math.round(P.int_limit / GB)), value: Math.round(P.int_limit / GB), unit: "GB", cls: "sl-pint", key: "pool.internal_gb", label: "Internal storage for Pocket", marks: [{ v: P.int_used / GB, label: "in use " + fb(P.int_used), color: "var(--soft)" }] }))}
+      ${frow("SD card for Pocket", "Older files, the nightly copy and the undo", slider({ min: Math.ceil(P.sd_used / GB), max: Math.max(Math.ceil(P.sd_used / GB), Math.floor(P.sd_max / GB), Math.round(P.sd_limit / GB)), value: Math.round(P.sd_limit / GB), unit: "GB", cls: "sl-psd", key: "pool.sd_gb", label: "SD card for Pocket", marks: [{ v: P.sd_used / GB, label: "in use " + fb(P.sd_used), color: "var(--soft)" }] }))}
       ${frow("Always leave free for Android", "Keeps the phone itself from running out of space", slider({ min: 2, max: 20, value: S.pool.reserve_gb, unit: "GB", cls: "sl-res", key: "pool.reserve_gb", label: "Always leave free for Android" }))}
       ${frow("", "", `<span class="pool-preview soft small"></span>`)}
       ${frow("When the pool is full", "Applies to every app", `<span class="soft">New uploads are refused with a "pool full" error, and you are alerted</span>`)}
@@ -1310,6 +1323,18 @@ RENDER.settings = async (args, ticket) => {
   let secret = null;
   const getSecret = async () => secret || (secret = await act(() => api("GET", "/api/settings/enroll-secret")));
   $("sec-show").onclick = async () => { const r = await getSecret(); if (r) { $("sec").textContent = r.enroll_secret; $("mcfg").textContent = r.machine_config; } };
+  // The QR code holds the machine setup text itself; Pocket Drive's setup screen reads that form (QrPayload.parse).
+  $("qr-show").onclick = async () => {
+    const r = await getSecret(); if (!r) return;
+    let code;
+    try { code = PocketQR.svg(r.machine_config, "Setup QR code"); } catch (e) { return toast(e.message, true); }
+    openModal(`<h2>Set up a phone</h2><div class="body">
+      <p class="soft">In Pocket Drive (or another app's setup screen), choose <b>Scan the QR code</b> and point the camera here.</p>
+      <div style="margin:16px auto 6px;width:min(300px,100%);border-radius:var(--r-lg);overflow:hidden;border:1px solid var(--line)">${code}</div>
+      <p class="note" style="margin:12px 0 0">The code contains the enroll secret. Show it only to your own devices, and close it when done.</p></div>
+      <div class="foot"><button class="btn primary" id="m-no">Close</button></div>`);
+    $("m-no").onclick = closeModal;
+  };
   $("sec-copy").onclick = async () => { const r = await getSecret(); if (r) copyText(r.enroll_secret, "Enroll secret"); };
   $("cfg-copy").onclick = async () => { const r = await getSecret(); if (r) copyText(r.machine_config, "Machine setup file"); };
   $("ci-copy").onclick = async () => { const r = await getSecret(); if (r) copyText(Object.entries(r.ci).map(([k, val]) => `${k}=${val}`).join("\n"), "CI secrets"); };
