@@ -237,10 +237,13 @@ class Remote(private val app: Context, val settings: Settings) {
     }
 
     /** Move one file: the server's own move when it has one, otherwise a copy and a delete. */
-    suspend fun move(bucket: String, from: String, to: String) {
-        copy(bucket, from, to)
-        delete(bucket, from)
-    }
+    suspend fun move(bucket: String, from: String, to: String) =
+        ServerApi.moveOrCopy(settings.has("move"),
+            viaServer = { api.move(bucket, from, to, overwrite = true) },      // copyObject replaced the target too
+            copyAndDelete = { copy(bucket, from, to); delete(bucket, from) })
+
+    /** The signed /_pocket/ calls, for the server's own move. */
+    private val api by lazy { ServerApi(this, settings) }
 
     // ---------------------------------------------------------------- uploading
 
@@ -381,6 +384,10 @@ class Remote(private val app: Context, val settings: Settings) {
                 "AccessDenied" -> e.sdkErrorMetadata.errorMessage ?: "Pocket Cloud refused this device."
                 "NoSuchKey" -> "That file is no longer on the server."
                 else -> e.sdkErrorMetadata.errorMessage ?: e.message ?: "The server reported an error."
+            }
+            is ServerApi.Failure -> when (e.code) {
+                "NoSuchKey" -> "That file is no longer on the server."
+                else -> e.message ?: "The server reported an error."
             }
             is java.net.UnknownHostException -> "Can't find the server. Is Tailscale connected?"
             is java.net.ConnectException, is java.net.SocketTimeoutException ->

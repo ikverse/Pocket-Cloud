@@ -441,31 +441,44 @@ class Handler(FileRoutes, BaseHTTPRequestHandler):
                 core.meta.delete(owner["id"], space, key)
                 core.record_change(owner["id"], space, key, "delete", "app", dev["uid"])
 
+        settled = []
+
+        def settle(status, resp_body):
+            """Keep or drop the undo copies and adjust usage, once, before the client hears: a client that asks
+            for its quota (or uploads again) right after its answer always sees this write counted."""
+            if settled:
+                return
+            settled.append(True)
+            if op in WRITES:
+                feed(status, resp_body)
+            if op == "DeleteObjects":
+                gone = deleted_keys(status, resp_body)
+                for k, kk in kept_by_key.items():
+                    if k in gone:
+                        for storage, _, sz in kk:
+                            core.usage.add(owner["id"], space, storage, -sz)
+                    else:
+                        undo.drop(kk)
+                return
+            if not succeeded(status, resp_body):
+                undo.drop(kept)
+                return
+            for storage, _, sz in kept:
+                core.usage.add(owner["id"], space, storage, -sz)
+            if op in GROWS:
+                core.usage.add(owner["id"], space, "sd" if core.internal_full else "int", size)
+
         status, resp_body = self._forward(path_qs, fwd_headers, body, ctx,
                                           capture=op in ("DeleteObjects", "CopyObject", "CompleteMultipartUpload"),
-                                          before_send=feed if op in WRITES else None)
-        ok = succeeded(status, resp_body)
+                                          before_send=settle)
+        settle(status, resp_body)        # no-op when it already ran before the answer
 
-        # afterwards: keep or drop the undo copies, and adjust usage
+        # afterwards: tell the app's other devices
         if op == "DeleteObjects":
-            gone = deleted_keys(status, resp_body)
-            for k, kk in kept_by_key.items():
-                if k in gone:
-                    for storage, _, sz in kk:
-                        core.usage.add(owner["id"], space, storage, -sz)
-                else:
-                    undo.drop(kk)
-            if gone:
+            if deleted_keys(status, resp_body):
                 core.notify_change(owner["id"])
             return
-        if not ok:
-            undo.drop(kept)
-            return
-        for storage, _, sz in kept:
-            core.usage.add(owner["id"], space, storage, -sz)
-        if op in GROWS:
-            core.usage.add(owner["id"], space, "sd" if core.internal_full else "int", size)
-        if op in CHANGES:
+        if succeeded(status, resp_body) and op in CHANGES:
             core.notify_change(owner["id"])
 
     def _s3_put_record(self, owner_id, space, key, uid, etag, ctype):

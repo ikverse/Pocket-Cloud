@@ -114,6 +114,13 @@ class ServerApi(private val remote: Remote, private val settings: Settings) {
 
     private fun enc(s: String) = java.net.URLEncoder.encode(s, "UTF-8")
 
+    // ---------------------------------------------------------------- moving
+
+    /** Move one file within [bucket] with POST /_pocket/move (feature "move"). [overwrite] replaces a file already at [to]. */
+    suspend fun move(bucket: String, from: String, to: String, overwrite: Boolean = true) {
+        call("POST", "/_pocket/move", body = moveBody(bucket, from, to, overwrite))
+    }
+
     // ---------------------------------------------------------------- share links
 
     /** Make a temporary link to one of this device's files. */
@@ -140,6 +147,31 @@ class ServerApi(private val remote: Remote, private val settings: Settings) {
             val message = listOf(method.uppercase(), path, query, date.toString(), sha).joinToString("\n")
             val mac = Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec(secret.toByteArray(), "HmacSHA256")) }
             return mac.doFinal(message.toByteArray()).joinToString("") { "%02x".format(it) }
+        }
+
+        /** The JSON body of POST /_pocket/move. */
+        fun moveBody(bucket: String, from: String, to: String, overwrite: Boolean): JSONObject = JSONObject()
+            .put("from", JSONObject().put("bucket", bucket).put("key", from))
+            .put("to", JSONObject().put("bucket", bucket).put("key", to))
+            .put("overwrite", overwrite)
+
+        /** A 404 that means the server has no such route (an older server), not a missing file or bucket. */
+        fun routeMissing(e: Failure) = e.status == 404 && e.code != "NoSuchKey" && e.code != "NoSuchBucket"
+
+        /**
+         * Move with the server's own route when it has one ([serverHasMove]), otherwise (or when the route turns out to
+         * be missing) with [copyAndDelete]. Any other refusal from the server is passed on.
+         */
+        suspend fun moveOrCopy(serverHasMove: Boolean, viaServer: suspend () -> Unit, copyAndDelete: suspend () -> Unit) {
+            if (serverHasMove) {
+                try {
+                    viaServer()
+                    return
+                } catch (e: Failure) {
+                    if (!routeMissing(e)) throw e
+                }
+            }
+            copyAndDelete()
         }
     }
 }

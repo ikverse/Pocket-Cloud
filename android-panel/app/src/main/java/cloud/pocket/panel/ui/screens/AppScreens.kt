@@ -26,6 +26,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import cloud.pocket.panel.data.appRules
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -188,6 +190,9 @@ private fun AllocationSheet(id: String, onDone: () -> Unit) {
 fun AppDetailScreen(id: String) {
     val panel = LocalPanel.current
     val load = rememberLoad(id) { get("/api/apps/$id") }
+    // The rules come separately: if the server lacks the features or the request fails, their cards are simply absent.
+    val rules = rememberLoad(id) { appRules(id) }
+    LaunchedEffect(load.version) { if (load.version > 0) rules.reload() }     // pull to refresh and saves reload them too
     var confirm by remember { mutableStateOf<Ask?>(null) }
     PocketScreen(load.data?.s("name") ?: "App", load, showBack = true,
         titleLeading = load.data?.let { a -> { AppMark(a.s("id"), a.s("name")) } }) { a ->
@@ -247,6 +252,7 @@ fun AppDetailScreen(id: String) {
                 }
             }
         }
+        rules.data?.let { r -> ruleItems(id, a.b("is_family"), r) { rules.reload() } }
         item {
             SectionCard("Actions") {
                 FlowRow(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),

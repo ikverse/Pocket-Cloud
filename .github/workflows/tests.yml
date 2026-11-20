@@ -1,0 +1,90 @@
+name: Server and libraries
+
+# The server suite and the three client libraries' tests, on every push to main and every pull request.
+# The Android apps are tested by android.yml when a release tag is pushed (or run by hand).
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # The same rclone the phone runs; server/tests/helpers.py looks for it at tools/rclone/rclone.
+      - name: Install rclone 1.75.2
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/rclone.zip" https://downloads.rclone.org/v1.75.2/rclone-v1.75.2-linux-amd64.zip
+          unzip -q "$RUNNER_TEMP/rclone.zip" -d "$RUNNER_TEMP"
+          mkdir -p tools/rclone
+          cp "$RUNNER_TEMP"/rclone-v1.75.2-linux-amd64/rclone tools/rclone/rclone
+          tools/rclone/rclone version | head -1
+      - run: pip install "boto3>=1.36"
+      # test_phone needs the real phone and skips itself without POCKET_TOKEN.
+      - name: Server tests
+        working-directory: server/tests
+        run: python -m unittest -v 2>&1 | tail -n 60; exit ${PIPESTATUS[0]}
+        shell: bash
+
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install rclone 1.75.2 (test_client starts a real server)
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/rclone.zip" https://downloads.rclone.org/v1.75.2/rclone-v1.75.2-linux-amd64.zip
+          unzip -q "$RUNNER_TEMP/rclone.zip" -d "$RUNNER_TEMP"
+          mkdir -p tools/rclone
+          cp "$RUNNER_TEMP"/rclone-v1.75.2-linux-amd64/rclone tools/rclone/rclone
+      - run: pip install -e clients/python
+      - name: Python library tests
+        working-directory: clients/python
+        run: python -m unittest discover -s tests -v
+
+  node:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install rclone 1.75.2 (client.test.js starts a real server)
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/rclone.zip" https://downloads.rclone.org/v1.75.2/rclone-v1.75.2-linux-amd64.zip
+          unzip -q "$RUNNER_TEMP/rclone.zip" -d "$RUNNER_TEMP"
+          mkdir -p tools/rclone
+          cp "$RUNNER_TEMP"/rclone-v1.75.2-linux-amd64/rclone tools/rclone/rclone
+      - run: pip install "boto3>=1.36"
+      - name: Node library tests
+        working-directory: clients/node
+        run: |
+          npm ci
+          npm test
+
+  kotlin-lite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Kotlin light library tests
+        working-directory: clients/kotlin-lite
+        run: ./gradlew test --no-daemon
