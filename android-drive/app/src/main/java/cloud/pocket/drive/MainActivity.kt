@@ -5,7 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import cloud.pocket.drive.ui.DriveApp
-import cloud.pocket.drive.ui.theme.DriveTheme
+import cloud.pocket.drive.ui.theme.PocketDriveTheme
 import cloud.pocket.drive.update.Updates
 
 class MainActivity : ComponentActivity() {
@@ -16,7 +16,7 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) Updates.of(this).checkQuietly()
         val open = intent?.getStringExtra("open")
         setContent {
-            DriveTheme {
+            PocketDriveTheme {
                 DriveApp(open)
             }
         }

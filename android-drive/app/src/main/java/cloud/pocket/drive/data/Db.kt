@@ -236,6 +236,8 @@ interface SyncDao {
 
     @Insert suspend fun log(l: SyncLog)
     @Query("SELECT * FROM sync_log WHERE pairId = :pairId ORDER BY id DESC LIMIT 300") fun observeLog(pairId: Long): Flow<List<SyncLog>>
+    /** The log of every pair together, newest first (Activity and the conflict notes on Sync). */
+    @Query("SELECT * FROM sync_log ORDER BY id DESC LIMIT 300") fun observeAllLog(): Flow<List<SyncLog>>
     @Query("DELETE FROM sync_log WHERE ts < :before") suspend fun purgeLog(before: Long)
     @Query("DELETE FROM sync_log WHERE pairId = :pairId") suspend fun clearLog(pairId: Long)
 

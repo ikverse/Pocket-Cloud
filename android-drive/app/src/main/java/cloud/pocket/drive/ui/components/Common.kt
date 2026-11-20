@@ -18,7 +18,6 @@ import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.VideoFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -35,15 +34,18 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import cloud.pocket.drive.ui.theme.PocketTheme
 import java.util.Locale
 
 @Composable
 fun ErrorBox(message: String, retry: (() -> Unit)? = null, other: Pair<String, () -> Unit>? = null) {
-    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(message, style = MaterialTheme.typography.bodyLarge)
-        if (retry != null) TextButton(onClick = retry) { Text("Try again") }
-        if (other != null) TextButton(onClick = other.second) { Text(other.first) }
+    Column(Modifier.fillMaxWidth().padding(vertical = 32.dp, horizontal = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(message, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
+        if (retry != null) PrimaryButton("Try again", retry)
+        if (other != null) PlainButton(other.first, other.second)
     }
 }
 
@@ -54,16 +56,17 @@ fun LoadingBox() {
 
 @Composable
 fun EmptyState(title: String, text: String = "") {
-    Column(Modifier.fillMaxSize().padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(title, style = MaterialTheme.typography.titleMedium)
-        if (text.isNotEmpty()) Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 8.dp))
+    Column(Modifier.fillMaxWidth().padding(vertical = 32.dp, horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(title, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+        if (text.isNotEmpty()) Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
     }
 }
 
+/** A small section label outside a card (sub-screens and dialogs). */
 @Composable
 fun SectionTitle(text: String, modifier: Modifier = Modifier) {
-    Text(text, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary,
+    Text(text, style = MaterialTheme.typography.titleMedium,
         modifier = modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 4.dp))
 }
 
@@ -75,7 +78,7 @@ fun ConfirmDialog(title: String, text: String, confirm: String, danger: Boolean 
         text = { Text(text) },
         confirmButton = {
             TextButton(onClick = { onDismiss(); onConfirm() }) {
-                Text(confirm, color = if (danger) MaterialTheme.colorScheme.error else Color.Unspecified)
+                Text(confirm, color = if (danger) PocketTheme.extra.bad else Color.Unspecified)
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
@@ -101,13 +104,13 @@ fun TextInputDialog(title: String, label: String, initial: String = "", confirm:
     )
 }
 
+/** Progress as a meter; with no total yet, an empty track. */
 @Composable
 fun Progress(done: Long, total: Long, modifier: Modifier = Modifier) {
-    if (total > 0) LinearProgressIndicator(progress = { (done.toFloat() / total).coerceIn(0f, 1f) }, modifier = modifier.fillMaxWidth())
-    else LinearProgressIndicator(modifier = modifier.fillMaxWidth())
+    Meter(if (total > 0) done.toFloat() / total else null, modifier)
 }
 
-/** The icon for a file by its name. */
+/** The icon for a file by its name (sub-screens that still use plain icons). */
 fun iconFor(name: String, isDir: Boolean): ImageVector {
     if (isDir) return Icons.Filled.Folder
     return when (name.substringAfterLast('.', "").lowercase(Locale.ROOT)) {

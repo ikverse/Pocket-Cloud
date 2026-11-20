@@ -29,7 +29,7 @@ import java.io.File
 import java.io.IOException
 import java.util.UUID
 
-enum class Sort(val label: String) { NAME("Name"), DATE("Date modified"), SIZE("Size") }
+enum class Sort(val label: String, val short: String) { NAME("Name", "Name"), DATE("Date modified", "Date"), SIZE("Size", "Size") }
 
 /** What the Browse screen shows and does: one folder of one bucket, with the actions on its items. */
 class BrowseModel(app: Application) : AndroidViewModel(app) {
@@ -53,6 +53,10 @@ class BrowseModel(app: Application) : AndroidViewModel(app) {
     var trashMode by mutableStateOf(false)
     /** Showing a search over the whole drive. */
     var globalSearch by mutableStateOf(false)
+    /** The + sheet (upload, new folder, new vault) is open. */
+    var addSheet by mutableStateOf(false)
+    /** Select mode: the rows show check boxes (also on with nothing picked yet). */
+    var selectMode by mutableStateOf(false)
     /** The vault the shown folder belongs to (its contents are encrypted), if any. */
     var vault by mutableStateOf<Vault?>(null); private set
     var vaults by mutableStateOf<List<Vault>>(emptyList()); private set
@@ -114,6 +118,16 @@ class BrowseModel(app: Application) : AndroidViewModel(app) {
         offlineMode = false
         searching = false
         open(Keys.parent(key))
+    }
+
+    /** Show the folder [p] of [bucket] (from Home or the Vault screen). */
+    fun openFolder(bucket: String, p: String) {
+        this.bucket = bucket
+        globalSearch = false
+        offlineMode = false
+        trashMode = false
+        searching = false
+        open(p)
     }
 
     /** A file was brought back from an old version: say so and show it. */
@@ -216,6 +230,17 @@ class BrowseModel(app: Application) : AndroidViewModel(app) {
         "Vault created. Keep the password safe: without it the files can't be recovered."
     }
 
+    /** Make a new vault at the top of [bucket] (from the Vault screen, wherever Files happens to be). */
+    fun createVaultAtTop(bucket: String, name: String, password: String) = operation("Creating vault…") {
+        Keys.problem(name)?.let { return@operation it }
+        if (g.remote.list(bucket, "").any { it.name.equals(name, ignoreCase = true) }) return@operation "\"$name\" already exists in ${cloud.pocket.drive.data.bucketLabel(bucket)}."
+        val folder = "$name/"
+        val v = g.vaults.add(bucket, folder, name, password)
+        val crypt = cipherOf(v)!!
+        g.remote.putSmall(bucket, folder + crypt.encryptSegment(Keys.KEEP), crypt.header(crypt.newNonce()), 0)
+        "Vault created. Keep the password safe: without it the files can't be recovered."
+    }
+
     /** Treat an existing folder, already encrypted by rclone or this app, as a vault. */
     fun useAsVault(e: Entry, password: String) {
         viewModelScope.launch {
@@ -233,10 +258,12 @@ class BrowseModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun unlock(v: Vault, password: String) {
+    /** Save [v]'s password on this phone; [onDone] runs once it is saved (the Vault screen re-reads its state then). */
+    fun unlock(v: Vault, password: String, onDone: () -> Unit = {}) {
         viewModelScope.launch {
             g.vaults.add(v.bucket, v.prefix, v.name, password)
             locked = null
+            onDone()
             reload()
         }
     }
@@ -257,7 +284,7 @@ class BrowseModel(app: Application) : AndroidViewModel(app) {
     // ---------------------------------------------------------------- selecting
 
     fun toggle(key: String) { selected = if (key in selected) selected - key else selected + key }
-    fun clearSelection() { selected = emptySet() }
+    fun clearSelection() { selected = emptySet(); selectMode = false }
     fun selectAll() { selected = visible().map { it.key }.toSet() }
     fun selectedEntries(): List<Entry> = entries.filter { it.key in selected }
 
