@@ -43,9 +43,11 @@ import com.patrykandpatrick.vico.core.cartesian.Zoom
 import com.patrykandpatrick.vico.core.cartesian.axis.HorizontalAxis
 import com.patrykandpatrick.vico.core.cartesian.axis.VerticalAxis
 import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModelProducer
+import com.patrykandpatrick.vico.core.cartesian.data.CartesianLayerRangeProvider
 import com.patrykandpatrick.vico.core.cartesian.data.CartesianValueFormatter
 import com.patrykandpatrick.vico.core.cartesian.data.lineSeries
 import com.patrykandpatrick.vico.core.cartesian.layer.LineCartesianLayer
+import kotlin.math.ceil
 import kotlin.math.roundToInt
 
 /** One line of a chart. */
@@ -59,30 +61,44 @@ fun seriesColors(): List<Color> = PocketTheme.extra.let { x ->
 
 /**
  * Custom part, approved: a line chart drawn with the Vico library (Material 3 has no charts), in theme colours,
- * with a touch read-out. [xLabel] turns an x index into its axis label.
+ * with a touch read-out. [xLabel] turns an x value into its axis label: the point's index, or its entry in [xs].
+ *
+ * [xs] places the points (whole numbers, e.g. days since the first day) so gaps in the data show as gaps in time;
+ * without it the points are evenly spaced. [wholeNumbers] is for counts: the y axis steps by whole numbers and its
+ * top is a round number, so labels never repeat after rounding.
  */
 @Composable
 fun LineChart(series: List<Series>, xLabel: (Int) -> String, yLabel: (Double) -> String = { it.roundToInt().toString() },
-              modifier: Modifier = Modifier) {
+              modifier: Modifier = Modifier, xs: List<Double>? = null, wholeNumbers: Boolean = false) {
     if (series.isEmpty() || series.all { it.values.isEmpty() }) return
     val producer = remember { CartesianChartModelProducer() }
-    LaunchedEffect(series) {
+    LaunchedEffect(series, xs) {
         producer.runTransaction {
-            lineSeries { series.forEach { s -> series(s.values.indices.toList(), s.values) } }
+            lineSeries { series.forEach { s -> series(xs?.take(s.values.size) ?: s.values.indices.map { it.toDouble() }, s.values) } }
         }
     }
     val text = rememberTextComponent(color = MaterialTheme.colorScheme.onSurface)
     // About six time labels, so they don't overlap on a phone; touching the chart shows every point.
-    val labelStep = (series.maxOf { it.values.size } + 5) / 6
+    val xRange = if (xs != null && xs.size > 1) (xs.last() - xs.first()).roundToInt() + 1 else series.maxOf { it.values.size }
+    val labelStep = ((xRange + 5) / 6).coerceAtLeast(1)
+    val maxY = series.maxOf { s -> s.values.maxOrNull() ?: 0.0 }
+    val yStep = ceil(maxY / 5).coerceAtLeast(1.0)
+    val yTop = (ceil(maxY / yStep) * yStep).coerceAtLeast(yStep)
     ProvideVicoTheme(rememberM3VicoTheme()) {
         CartesianChartHost(
             chart = rememberCartesianChart(
                 rememberLineCartesianLayer(
                     LineCartesianLayer.LineProvider.series(series.map {
                         LineCartesianLayer.rememberLine(fill = LineCartesianLayer.LineFill.single(fill(it.color)), areaFill = null)
-                    })
+                    }),
+                    rangeProvider = remember(wholeNumbers, yTop) {
+                        if (wholeNumbers) CartesianLayerRangeProvider.fixed(minY = 0.0, maxY = yTop) else CartesianLayerRangeProvider.auto()
+                    },
                 ),
-                startAxis = VerticalAxis.rememberStart(valueFormatter = CartesianValueFormatter { _, v, _ -> yLabel(v) }),
+                startAxis = VerticalAxis.rememberStart(valueFormatter = CartesianValueFormatter { _, v, _ -> yLabel(v) },
+                    itemPlacer = remember(wholeNumbers, yStep) {
+                        if (wholeNumbers) VerticalAxis.ItemPlacer.step({ yStep }) else VerticalAxis.ItemPlacer.step()
+                    }),
                 bottomAxis = HorizontalAxis.rememberBottom(
                     valueFormatter = CartesianValueFormatter { _, v, _ -> xLabel(v.roundToInt()) },
                     itemPlacer = remember(labelStep) { HorizontalAxis.ItemPlacer.aligned(spacing = { labelStep }) },

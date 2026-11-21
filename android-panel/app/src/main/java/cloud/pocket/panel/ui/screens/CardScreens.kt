@@ -126,12 +126,12 @@ fun SdCardsCard(cd: J, reload: () -> Unit) {
                     Button(onClick = { useNew = true }, enabled = !running, modifier = Modifier.padding(horizontal = 16.dp)) { Text("Use this card") }
                 }
                 "needs_setup" -> note("A card is in the phone (${slot.s("volume")}), but Termux has no folder on it yet. On the phone running " +
-                    "Pocket CloudServer, open Termux, type termux-setup-storage, press Enter and answer y. The card then shows here as a new card " +
+                    "Pocket Cloud, open Termux, type termux-setup-storage, press Enter and answer y. The card then shows here as a new card " +
                     "within a few seconds.", cs.tertiary)
                 "archive", "shelved_here" -> {
                     if (slot.s("state") == "shelved_here") {
                         PocketListItem(headlineContent = { Text("${card.s("name")} is ready to remove") },
-                            supportingContent = { Text("On the phone running Pocket CloudServer, unmount it (Settings › Device care › Storage › SD card › Unmount), " +
+                            supportingContent = { Text("On the phone running Pocket Cloud, unmount it (Settings › Device care › Storage › SD card › Unmount), " +
                                 "then take it out. Then put in the next card: a new one or an archive card.") }, colors = clearItem())
                     } else {
                         PocketListItem(headlineContent = { Text("${card.s("name")}, an archive card, is in the phone") },

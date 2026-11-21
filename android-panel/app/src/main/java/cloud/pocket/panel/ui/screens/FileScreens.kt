@@ -38,7 +38,9 @@ import cloud.pocket.panel.data.J
 import cloud.pocket.panel.data.PocketApi
 import cloud.pocket.panel.data.ago
 import cloud.pocket.panel.data.body
+import cloud.pocket.panel.data.DOT
 import cloud.pocket.panel.data.bytes
+import cloud.pocket.panel.data.nb
 import cloud.pocket.panel.data.count
 import cloud.pocket.panel.data.dateTime
 import java.time.LocalDateTime
@@ -205,7 +207,7 @@ fun FilesScreen(startApp: String?) {
                         PocketListItem(
                             headlineContent = { Text(e.s("key"), style = PocketMono) },
                             overlineContent = { Text("${names[e.s("app")] ?: e.s("app")} · ${if (e.s("space") == "shared") "shared" else "device"}") },
-                            supportingContent = { Text("${e.s("reason")} ${dateTime(LocalDateTime.parse(e.s("time")).atZone(ZoneId.systemDefault()).toEpochSecond().toDouble())} by ${e.s("device_name")} · ${bytes(e.d("size"))} · kept ${e.i("days_left")} more days") },
+                            supportingContent = { Text("${e.s("reason")} ${dateTime(LocalDateTime.parse(e.s("time")).atZone(ZoneId.systemDefault()).toEpochSecond().toDouble())} by ${e.s("device_name")}${DOT}${nb(bytes(e.d("size")))}${DOT}kept ${e.i("days_left")} more days") },
                             trailingContent = {
                                 OutlinedButton(small = true, onClick = {
                                     panel.act("Restored ${e.s("key")}.", onDone = { load.reload() }) {
@@ -279,7 +281,7 @@ fun FilesScreen(startApp: String?) {
                                     DropdownMenu(menu, { menu = false }) {
                                         DropdownMenuItem(text = { Text("Download") }, onClick = {
                                             menu = false
-                                            panel.act("Saved ${x.s("name")} to Downloads/Pocket CloudServer.") { saveToDownloads(context, panel.api, app!!, space, x.s("key"), x.s("name")) }
+                                            panel.act("Saved ${x.s("name")} to Downloads/Pocket Cloud.") { saveToDownloads(context, panel.api, app!!, space, x.s("key"), x.s("name")) }
                                         })
                                         DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, onClick = {
                                             menu = false
@@ -308,12 +310,12 @@ fun FilesScreen(startApp: String?) {
     }
 }
 
-/** Save a file into the phone's Downloads/Pocket CloudServer folder (no storage permission needed on Android 10+). */
+/** Save a file into the phone's Downloads/Pocket Cloud folder (no storage permission needed on Android 10+). */
 private suspend fun saveToDownloads(context: android.content.Context, api: PocketApi, app: String, space: String, key: String, name: String) {
     val cr = context.contentResolver
     val values = ContentValues().apply {
         put(MediaStore.Downloads.DISPLAY_NAME, name)
-        put(MediaStore.Downloads.RELATIVE_PATH, "Download/Pocket CloudServer")
+        put(MediaStore.Downloads.RELATIVE_PATH, "Download/Pocket Cloud")
         put(MediaStore.Downloads.IS_PENDING, 1)
     }
     val uri = withContext(Dispatchers.IO) { cr.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) } ?: error("Can't create the file in Downloads.")

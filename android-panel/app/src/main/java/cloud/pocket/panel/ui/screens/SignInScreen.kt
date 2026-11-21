@@ -19,6 +19,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +37,8 @@ import cloud.pocket.panel.data.PocketApi
 import cloud.pocket.panel.data.Session
 import cloud.pocket.panel.data.body
 import cloud.pocket.panel.ui.components.MonogramTile
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** First screen: the panel address and the admin password (or setting the password on first use). */
@@ -50,6 +53,20 @@ fun SignInScreen(session: Session, onSignedIn: () -> Unit) {
     val scope = rememberCoroutineScope()
     val device = "${Build.MANUFACTURER} ${Build.MODEL}"
 
+    // Ask the server up front whether it has a password yet, so a fresh (or reset) server opens straight in
+    // "choose a password" mode. Re-checked when the address changes; a server that can't be reached is left
+    // to the Sign in button, which shows the error.
+    LaunchedEffect(address) {
+        val a = address.trim()
+        if (a.isBlank()) return@LaunchedEffect
+        delay(400)
+        try {
+            setup = !PocketApi(a, null).get("/api/status").b("password_set")
+        } catch (e: Exception) {      // half-typed addresses can fail in odd ways; never crash over it
+            if (e is CancellationException) throw e
+        }
+    }
+
     fun submit() {
         busy = true
         error = null
@@ -59,7 +76,7 @@ fun SignInScreen(session: Session, onSignedIn: () -> Unit) {
                 val status = api.get("/api/status")
                 if (!status.b("password_set") && !setup) {
                     setup = true
-                    error = "This Pocket CloudServer has no admin password yet. Choose one (at least 8 characters)."
+                    error = "This Pocket Cloud has no admin password yet. Choose one (at least 8 characters)."
                     return@launch
                 }
                 if (setup && password != again) {

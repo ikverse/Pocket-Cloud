@@ -1,6 +1,7 @@
 package cloud.pocket.panel.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -59,7 +60,10 @@ object PocketTheme { val extra: PocketExtra @Composable get() = LocalPocketExtra
 @Composable
 fun PocketCloudTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalPocketExtra provides if (darkTheme) DarkExtra else LightExtra) {
-        MaterialTheme(colorScheme = if (darkTheme) DarkColors else LightColors,
-                      typography = PocketTypography, shapes = PocketShapes, content = content)
+        val colors = if (darkTheme) DarkColors else LightColors
+        // Screens drawn on a plain background (no Surface or Scaffold) would otherwise get black text.
+        MaterialTheme(colorScheme = colors, typography = PocketTypography, shapes = PocketShapes) {
+            CompositionLocalProvider(LocalContentColor provides colors.onBackground, content = content)
+        }
     }
 }

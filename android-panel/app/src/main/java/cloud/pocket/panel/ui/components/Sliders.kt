@@ -75,8 +75,9 @@ fun SliderSetting(
                 },
                 // A longer unit such as "% used" would squeeze the number out of the standard-width box.
                 modifier = Modifier.width(if (unit.length > 3) 136.dp else 96.dp), singleLine = true,
-                placeholder = { if (none) Text("none") },
-                suffix = { Text(unit) },
+                // "none" stands alone: beside the unit it had no room and broke into "non" / "e".
+                placeholder = { if (none) Text("none", maxLines = 1, softWrap = false) },
+                suffix = { if (!(none && text.isBlank())) Text(unit) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             )
         }

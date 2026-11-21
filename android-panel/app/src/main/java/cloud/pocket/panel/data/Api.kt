@@ -57,7 +57,7 @@ class PocketApi(val base: String, @Volatile var token: String?) {
         } catch (e: ApiException) {
             throw e
         } catch (e: IOException) {
-            throw ApiException(0, "Unreachable", "Pocket CloudServer can't be reached. Is the phone on and connected to Tailscale?")
+            throw ApiException(0, "Unreachable", "Pocket Cloud can't be reached. Is the phone on and connected to Tailscale?")
         } finally {
             conn.disconnect()
         }

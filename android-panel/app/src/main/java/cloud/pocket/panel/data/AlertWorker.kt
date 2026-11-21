@@ -50,8 +50,8 @@ class AlertWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         fun createChannel(context: Context) {
             val nm = context.getSystemService(NotificationManager::class.java)
             nm.createNotificationChannel(
-                NotificationChannel(CHANNEL, "Pocket CloudServer alerts", NotificationManager.IMPORTANCE_HIGH).apply {
-                    description = "Problems on your Pocket CloudServer, like a full pool or a failed job"
+                NotificationChannel(CHANNEL, "Pocket Cloud alerts", NotificationManager.IMPORTANCE_HIGH).apply {
+                    description = "Problems on your Pocket Cloud, like a full pool or a failed job"
                 })
         }
 
@@ -72,7 +72,7 @@ class AlertWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             val n = NotificationCompat.Builder(context, CHANNEL)
                 .setSmallIcon(R.drawable.ic_launcher_monochrome)
-                .setContentTitle(if (alert.s("level") == "bad") "Pocket CloudServer needs attention" else "Pocket CloudServer warning")
+                .setContentTitle(if (alert.s("level") == "bad") "Pocket Cloud needs attention" else "Pocket Cloud warning")
                 .setContentText(alert.s("text"))
                 .setStyle(NotificationCompat.BigTextStyle().bigText(alert.s("text")))
                 .setPriority(if (alert.s("level") == "bad") NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)

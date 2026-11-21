@@ -94,7 +94,7 @@ fun SettingsScreen() {
         val text = runCatching { context.contentResolver.openInputStream(uri)?.use { it.readBytes().decodeToString() } }.getOrNull()
         val data = runCatching { JSONObject(text ?: "") }.getOrNull()
         if (data == null) {
-            panel.act(null) { error("That file is not a Pocket CloudServer backup.") }
+            panel.act(null) { error("That file is not a Pocket Cloud backup.") }
         } else ask = Ask("Restore settings", "Replace every setting, app and device key with the ones in this backup? Files are not touched.", "Restore", true) {
             panel.act("Settings restored.", onDone = { load.reload() }) { panel.api.post("/api/settings/restore", data) }
         }
@@ -146,14 +146,14 @@ fun SettingsScreen() {
                     OutlinedButton(onClick = {
                         panel.act("Machine setup file copied.") {
                             val x = secret ?: panel.api.get("/api/settings/enroll-secret").also { secret = it }
-                            copy("Pocket CloudServer machine setup", x.s("machine_config"))
+                            copy("Pocket Cloud machine setup", x.s("machine_config"))
                         }
                     }) { Text("Copy setup file") }
                     OutlinedButton(onClick = {
                         panel.act("CI secrets copied.") {
                             val x = secret ?: panel.api.get("/api/settings/enroll-secret").also { secret = it }
                             val ci = x.obj("ci")
-                            copy("Pocket CloudServer CI secrets", ci.keys().joinToString("\n") { "$it=${ci.s(it)}" })
+                            copy("Pocket Cloud CI secrets", ci.keys().joinToString("\n") { "$it=${ci.s(it)}" })
                         }
                     }) { Text("Copy as CI secrets") }
                     OutlinedButton(danger = true, onClick = {

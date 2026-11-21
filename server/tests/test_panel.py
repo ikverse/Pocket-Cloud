@@ -251,6 +251,19 @@ class PanelTests(unittest.TestCase):
         self.call("PATCH", "/api/settings", {"new_apps": {"alloc_gb": 3}, "jobs": {"nightly_time": "03:00", "undo_days": 14}})
         self.srv.core.settings.update({"pool": {"sd_gb": 200}})
 
+    def test_settings_show_the_sd_folder_in_use(self):
+        layout = self.srv.core.layout
+        self.assertEqual(self.call("GET", "/api/settings")["settings"]["sd_root"], layout.roots["sd"])
+        saved, other = layout.roots["sd"], os.path.join(self.srv.tmp, "card-2")
+        os.makedirs(other, exist_ok=True)
+        layout.roots["sd"] = other                 # as after a card swap: the saved sd_root still names the old card
+        try:
+            self.assertEqual(self.call("GET", "/api/settings")["settings"]["sd_root"], other)
+            layout.roots["sd"] = None              # no card in use
+            self.assertEqual(self.call("GET", "/api/settings")["settings"]["sd_root"], "")
+        finally:
+            layout.roots["sd"] = saved
+
     def test_read_only_switch_applies(self):
         _, c = self.app("ros")
         self.call("PATCH", "/api/settings", {"server": {"read_only": True}})

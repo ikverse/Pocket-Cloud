@@ -40,7 +40,9 @@ import cloud.pocket.panel.data.GB
 import cloud.pocket.panel.data.J
 import cloud.pocket.panel.data.ago
 import cloud.pocket.panel.data.body
+import cloud.pocket.panel.data.DOT
 import cloud.pocket.panel.data.bytes
+import cloud.pocket.panel.data.nb
 import cloud.pocket.panel.data.count
 import cloud.pocket.panel.data.dateTime
 import cloud.pocket.panel.data.gb
@@ -93,7 +95,7 @@ fun AppsScreen() {
         item {
             SectionCard("Storage pool") {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                    Text("${gb(pool.d("promised"))} promised to apps out of the ${gb(pool.d("total"))} pool · ${gb(pool.d("unpromised"))} unpromised",
+                    Text("${nb(gb(pool.d("promised")))} promised to apps out of the ${nb(gb(pool.d("total")))} pool${DOT}${nb(gb(pool.d("unpromised")))} unpromised",
                         style = MaterialTheme.typography.bodyMedium)
                     UsageBar(pct(pool.d("promised"), pool.d("total")), 101.0, Modifier.padding(vertical = 8.dp))
                     Text("New apps get ${defaults.d("alloc_gb").let { if (it % 1 == 0.0) it.roundToInt().toString() else it.toString() }} GB, " +
@@ -238,7 +240,7 @@ fun AppDetailScreen(id: String) {
                 val cs = MaterialTheme.colorScheme
                 LineChart(listOf(Series("Reads", s.nums("reads"), cs.primary), Series("Writes", s.nums("writes"), cs.tertiary),
                     Series("Listings", s.nums("listings"), cs.secondary), Series("Deletes", s.nums("deletes"), cs.error)),
-                    xLabel = { i -> days.getOrNull(i)?.let { weekday(java.time.LocalDate.parse(it).atStartOfDay(java.time.ZoneId.systemDefault()).toEpochSecond().toDouble()) } ?: "" })
+                    xLabel = { i -> days.getOrNull(i)?.let { weekday(java.time.LocalDate.parse(it).atStartOfDay(java.time.ZoneId.systemDefault()).toEpochSecond().toDouble()) } ?: "" }, wholeNumbers = true)
             }
         }
         item { AppSettings(a) { load.reload() } }

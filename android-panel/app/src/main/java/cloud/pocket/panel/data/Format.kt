@@ -61,4 +61,17 @@ fun duration(seconds: Double): String {
     }
 }
 
+/** Keeps a number with its unit ("11 GB") on one line. */
+fun nb(s: String): String = s.replace(' ', '\u00A0')
+
+/** A " · " separator that never starts a line. */
+const val DOT = "\u00A0· "
+
+/** Termux reports the charger as UNPLUGGED or PLUGGED_AC / _USB / _WIRELESS; say it in words. */
+fun charging(plugged: String): String = when {
+    plugged.isBlank() -> "charger unknown"
+    plugged.equals("UNPLUGGED", ignoreCase = true) -> "not charging"
+    else -> "charging"
+}
+
 fun pct(part: Double, whole: Double): Double = if (whole <= 0) 100.0 else part / whole * 100

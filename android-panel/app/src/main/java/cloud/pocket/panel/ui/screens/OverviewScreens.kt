@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import cloud.pocket.panel.data.GB
 import cloud.pocket.panel.data.J
 import cloud.pocket.panel.data.bytes
+import cloud.pocket.panel.data.charging
 import cloud.pocket.panel.data.clock
 import cloud.pocket.panel.data.count
 import cloud.pocket.panel.data.dateTime
@@ -126,7 +127,7 @@ fun HomeScreen() {
         item {
             Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
                 KeyValue("Running for", duration(o.d("now") - o.d("started_at")) + " · since " + dateTime(o.d("started_at")))
-                if (phone.has("battery")) KeyValue("Phone", "${phone.i("battery")}% · ${phone.s("plugged")} · ${"%.1f".format(Locale.US, phone.d("temp_c"))} °C")
+                if (phone.has("battery")) KeyValue("Phone", "${phone.i("battery")}% · ${charging(phone.s("plugged"))} · ${"%.1f".format(Locale.US, phone.d("temp_c"))} °C")
                 if (o.s("version").isNotBlank()) KeyValue("Server version", o.s("version"), mono = true)
             }
         }
@@ -164,7 +165,7 @@ fun HomeScreen() {
         }
         item {
             StatRow({ StatCard("Battery", if (phone.has("battery")) "${phone.i("battery")}%" else "—",
-                    if (phone.has("battery")) "${phone.s("plugged")} · ${"%.1f".format(Locale.US, phone.d("temp_c"))} °C" else "no phone readings", it) },
+                    if (phone.has("battery")) "${charging(phone.s("plugged"))} · ${"%.1f".format(Locale.US, phone.d("temp_c"))} °C" else "no phone readings", it) },
                 { StatCard("Uptime", duration(o.d("now") - o.d("started_at")), "since " + dateTime(o.d("started_at")), it) })
         }
         item {
@@ -176,7 +177,7 @@ fun HomeScreen() {
                 else {
                     val hours = o.nums("hours")
                     LineChart(apps.mapIndexed { i, a -> Series(names[a] ?: a, hourly.nums(a), colors[i % colors.size]) },
-                        xLabel = { i -> hours.getOrNull(i)?.let { clock(it) } ?: "" })
+                        xLabel = { i -> hours.getOrNull(i)?.let { clock(it) } ?: "" }, wholeNumbers = true)
                 }
             }
         }
@@ -300,9 +301,17 @@ fun PhoneScreen() {
                 if (g.size < 2) Text(g.firstOrNull()?.let { "One day of history so far: ${bytes(it.d("sd"))} on the SD card, " +
                         "${bytes(it.d("int"))} on internal storage. The chart starts after the second day." } ?: "No history yet.",
                     style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant, modifier = Modifier.padding(16.dp, 4.dp))
-                else LineChart(listOf(Series("SD card", g.map { it.d("sd") / GB }, x.brand), Series("Internal", g.map { it.d("int") / GB }, x.warn)),
-                    xLabel = { idx -> days.getOrNull(idx)?.let { fmt.format(LocalDate.parse(it)) } ?: "" },
-                    yLabel = { "%.2f GB".format(Locale.US, it) })
+                else {
+                    // Points sit at their day, so days without a reading show as a gap in time, not as one step.
+                    val first = LocalDate.parse(days.first())
+                    val xs = days.map { java.time.temporal.ChronoUnit.DAYS.between(first, LocalDate.parse(it)).toDouble() }
+                    // MB until there is a gigabyte to show; small data in GB reads as 0.00, 0.01, ...
+                    val big = g.any { maxOf(it.d("sd"), it.d("int")) >= GB }
+                    val unit = if (big) GB else 1024.0 * 1024.0
+                    LineChart(listOf(Series("SD card", g.map { it.d("sd") / unit }, x.brand), Series("Internal", g.map { it.d("int") / unit }, x.warn)),
+                        xLabel = { off -> fmt.format(first.plusDays(off.toLong())) }, xs = xs,
+                        yLabel = { if (big) "%.1f GB".format(Locale.US, it) else if (it < 10) "%.1f MB".format(Locale.US, it) else "%.0f MB".format(Locale.US, it) })
+                }
             }
         }
         item {

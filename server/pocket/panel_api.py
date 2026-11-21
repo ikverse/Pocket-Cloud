@@ -901,6 +901,9 @@ RESTARTS_RCLONE = {"server.read_only", "server.dir_cache_s", "server.upload_buff
 def settings_get(core):
     s = core.settings.all()
     s.pop("enroll_secret", None)
+    # The folder actually in use: with card search on, the saved sd_root is only the first card's folder and goes
+    # stale after a swap. "" when no card is in use.
+    s["sd_root"] = core.layout.roots.get("sd") or ""
     pool = _pool(core)
     return {"settings": s, "pool": pool, "enroll_secret_set": True,
             "machine_config": f"[pocket]\nendpoint = http://pocket:{s['storage_port']}\nenroll_secret = <secret>\n",

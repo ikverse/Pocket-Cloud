@@ -11,6 +11,13 @@ import urllib.request
 from .settings import GB
 
 
+def _charging(plugged):
+    """Termux reports UNPLUGGED or PLUGGED_AC / _USB / _WIRELESS; say it in words."""
+    if not plugged:
+        return "charger unknown"
+    return "not charging" if str(plugged).upper() == "UNPLUGGED" else "charging"
+
+
 def _size(b):
     """An allocation in its natural unit, as the panels show it: "3 GB", "1.5 GB", "5.17 MB"."""
     if b >= GB:
@@ -130,7 +137,7 @@ class Health:
             batt, temp, plugged = b.get("percentage"), b.get("temperature"), b.get("plugged")
             c.stats.phone_reading(batt, plugged, temp)
             if batt is not None:
-                self._check(r, "Battery", batt >= h["battery_low_pct"], f"{batt}% · {plugged}", "battery_low", "", "bad",
+                self._check(r, "Battery", batt >= h["battery_low_pct"], f"{batt}% · {_charging(plugged)}", "battery_low", "", "bad",
                             f"Battery is at {batt}%. Is the charger connected?")
             if temp is not None:
                 self.temp_c = temp

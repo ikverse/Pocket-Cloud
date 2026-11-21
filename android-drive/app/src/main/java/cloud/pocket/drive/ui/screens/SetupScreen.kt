@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -29,6 +30,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -58,6 +60,16 @@ fun SetupScreen(g: AppGraph, onDone: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var scanning by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    // The panel app's "Copy setup file" puts the same text on the clipboard that the QR code holds.
+    fun paste() {
+        val cm = context.getSystemService(android.content.ClipboardManager::class.java)
+        val text = cm?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
+        val setup = QrPayload.parse(text)
+        if (setup == null) error = "The clipboard has no Pocket Cloud setup text. In the control panel, use Settings, Copy setup file first."
+        else { address = setup.endpoint; secret = setup.secret; error = null }
+    }
 
     fun connect() {
         busy = true
@@ -103,7 +115,8 @@ fun SetupScreen(g: AppGraph, onDone: () -> Unit) {
             Monogram(56.dp)
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Connect to your Pocket Cloud", style = MaterialTheme.typography.headlineSmall)
-                Text("Open the control panel on your PC, go to Settings, and show the setup QR code.", style = MaterialTheme.typography.bodyLarge,
+                Text("Open the control panel in a browser on your PC (for example http://pocket:8000), go to Settings and choose Show QR code. "
+                    + "Or, in the Pocket Cloud app on this phone, go to Settings and choose Copy setup file.", style = MaterialTheme.typography.bodyLarge,
                     color = c.onSurfaceVariant)
             }
             val ready = secret.isNotBlank() && address.isNotBlank()
@@ -115,6 +128,13 @@ fun SetupScreen(g: AppGraph, onDone: () -> Unit) {
                     TwoLine("Scan the QR code", "Fills in the address and secret for you")
                 }
             }
+            PCard(onClick = ::paste) {
+                ItemRow(leading = { IconTile(Icons.Filled.ContentPaste, c.primaryContainer, c.onPrimaryContainer) }, trailing = {
+                    PlainButton("Paste", ::paste, small = true)
+                }) {
+                    TwoLine("Paste setup text", "After Copy setup file in the Pocket Cloud app")
+                }
+            }
             PCard(gap = 10.dp) {
                 SectionHeader("Or type it in", Modifier.padding(bottom = 0.dp))
                 OutlinedTextField(address, { address = it }, label = { Text("Address") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
@@ -123,7 +143,7 @@ fun SetupScreen(g: AppGraph, onDone: () -> Unit) {
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next))
                 OutlinedTextField(secret, { secret = it }, label = { Text("Enrollment secret") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
-                    supportingText = { Text("From the control panel: Settings, Machine setup.") },
+                    supportingText = { Text("From the control panel: Settings, Connection, Enrollment secret, Show.") },
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next))
                 OutlinedTextField(name, { name = it }, label = { Text("This device's name") }, singleLine = true, modifier = Modifier.fillMaxWidth(),

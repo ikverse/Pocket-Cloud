@@ -121,7 +121,7 @@ fun AlertsScreen() {
     val enabled = remember { mutableStateMapOf<String, Boolean>() }
     val thresholds = remember { mutableStateMapOf<String, Float>() }
     PocketScreen("Alerts", load,
-        lede = "Alerts arrive as notifications on the phone running Pocket CloudServer and on this phone, and are listed here.", fab = {
+        lede = "Alerts arrive as notifications on the phone running Pocket Cloud and on this phone, and are listed here.", fab = {
         if (enabled.isNotEmpty() || thresholds.isNotEmpty()) ExtendedFloatingActionButton(onClick = {
             panel.act("Alert rules saved.", onDone = { enabled.clear(); thresholds.clear(); load.reload() }) {
                 panel.api.patch("/api/alerts", JSONObject().put("enabled", JSONObject(enabled.toMap())).put("thresholds", JSONObject(thresholds.toMap())))

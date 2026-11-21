@@ -29,6 +29,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cloud.pocket.panel.R
@@ -47,7 +48,7 @@ fun PhoneDrawing(intUsed: Double, intTotal: Double, sdPresent: Boolean, sdUsed: 
     val cs = MaterialTheme.colorScheme
     val x = PocketTheme.extra
     val measurer = rememberTextMeasurer()
-    val label = PocketMono.copy(fontSize = 11.sp, color = cs.onSurfaceVariant)
+    val label = PocketMono.copy(fontSize = 11.sp, color = cs.onSurfaceVariant, textAlign = TextAlign.Center)
     val rise = remember { Animatable(0f) }
     LaunchedEffect(Unit) { rise.animateTo(1f, tween(900, easing = CubicBezierEasing(.2f, .8f, .2f, 1f))) }
     val intF = if (intTotal > 0) (intUsed / intTotal).toFloat().coerceIn(0f, 1f) else 0f
@@ -71,7 +72,11 @@ fun PhoneDrawing(intUsed: Double, intTotal: Double, sdPresent: Boolean, sdUsed: 
         }
         drawCircle(cs.onSurface, 3.5f * k, o(94f, 32f))
         drawRoundRect(x.line, o(76f, 262f), s(36f, 5f), r(2.5f))
-        centred(measurer.measure("${bytes(intUsed)} / ${bytes(intTotal)}", label), 94f * k, (50f + H - H * intF * rise.value - 8f) * k - 13f * k)
+        // Two short lines fit inside the screen (104 units wide); one long line ran over the phone's outline.
+        // The label rides just above the fill, but never above the top of the screen.
+        val intText = measurer.measure("${bytes(intUsed)}\nof ${bytes(intTotal)}", label)
+        val intTop = ((50f + H - ih - 6f) * k - intText.size.height).coerceAtLeast(56f * k)
+        centred(intText, 94f * k, intTop)
 
         // the SD card
         val card = Path().apply {
@@ -85,7 +90,9 @@ fun PhoneDrawing(intUsed: Double, intTotal: Double, sdPresent: Boolean, sdUsed: 
         drawRoundRect(cs.surfaceContainer, o(178f, 208f), s(44f, 74f), r(3f))
         val sh = 74f * sdF * rise.value
         drawRoundRect(x.warn, o(178f, 208f + 74f - sh), s(44f, sh), r(3f))
-        centred(measurer.measure(if (sdPresent) "SD ${bytes(sdUsed)}" else "No SD card", label), 200f * k, 188f * k - 13f * k)
+        // Above the card, on two lines so it stays clear of the phone's outline (x = 158).
+        val sdText = measurer.measure(if (sdPresent) "SD\n${bytes(sdUsed)}" else "No SD\ncard", label)
+        centred(sdText, 200f * k, 190f * k - sdText.size.height)
     }
 }
 
