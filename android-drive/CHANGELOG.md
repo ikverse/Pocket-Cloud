@@ -5,6 +5,13 @@ the GitHub release, and refuses to publish a version that has no entry.
 
 ---
 
+## [0.3.1] — 2026-11-21
+
+- Fixed: the setup screen's headings were black on the dark background.
+- The setup screen now says where the QR code and the enrollment secret really are.
+- New on the setup screen: Paste setup text, for the "Copy setup file" button of the Pocket Cloud app on
+  the same phone.
+
 ## [0.3.0] — 2026-11-21
 
 - New look and a new icon: the teal "PD" monogram, and a redesign around five tabs — Home, Files, Sync,

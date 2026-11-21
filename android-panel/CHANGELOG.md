@@ -5,6 +5,20 @@ the GitHub release, and refuses to publish a version that has no entry.
 
 ---
 
+## [0.3.1] — 2026-11-21
+
+- Fixed: the app closed straight away on opening.
+- On a new Pocket Cloud server, or after the admin password was reset, the first screen now asks you to
+  choose a password instead of asking you to sign in.
+- The app is called "Pocket Cloud" everywhere: launcher, notifications, messages and the Downloads folder.
+- Settings shows the SD card folder in use, not the one of a card that was swapped out (needs the server
+  update of the same day).
+- Charts: whole-number steps on request counts, the data-over-time chart spaced by date and shown in MB
+  until there is a gigabyte.
+- Home: the phone drawing's labels no longer run over its outline.
+- The charger shows as "charging" or "not charging"; "none" fits its box; numbers no longer break from
+  their units at the end of a line.
+
 ## [0.3.0] — 2026-11-21
 
 - New look and a new icon: the cobalt "PC" monogram, and a redesign around Home, Apps, Files, Phone and
