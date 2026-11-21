@@ -33,7 +33,7 @@ function progressBody(source, touch) {
   return new ReadableStream({
     async pull(c) {
       const { value, done } = await it.next();
-      touch();
+      touch(done); // done: the whole body is handed over; the server still has to take it in and save it
       if (done) c.close();
       else c.enqueue(value instanceof Uint8Array ? value : new Uint8Array(value));
     },
@@ -45,20 +45,22 @@ function progressBody(source, touch) {
 
 /**
  * fetch with an idle timeout instead of a fixed one: the timer restarts whenever a body chunk goes out or comes
- * in, and stays on while the answer's body is read. init.body may be a function(touch) giving the body.
- * Throws Unreachable when there is no answer; a stall later makes reading the body fail.
+ * in, and stays on while the answer's body is read. init.body may be a function(touch) giving the body; it calls
+ * touch(true) once the whole body is handed over, and from then until the answer starts the wait is idleMs +
+ * finishMs: the network still holds the last megabytes, and the server reads, hashes and saves them to disk
+ * before it answers. Throws Unreachable when there is no answer; a stall later makes reading the body fail.
  */
-async function fetchWatched(url, init, idleMs, signal) {
+async function fetchWatched(url, init, idleMs, signal, finishMs = 0) {
   const ctrl = new AbortController();
   let timer = null;
   let timedOut = false;
   const onAbort = () => ctrl.abort();
-  const touch = () => {
+  const touch = (bodySent = false) => {
     clearTimeout(timer);
     timer = setTimeout(() => {
       timedOut = true;
       ctrl.abort();
-    }, idleMs);
+    }, idleMs + (bodySent === true ? finishMs : 0));
     timer.unref?.();
   };
   const done = () => {
@@ -224,7 +226,9 @@ class PocketApp {
     const c = this.dev.creds;
     Object.assign(headers, signPocket(method, urlPath, query, bodySha, c.access_key, c.secret_key));
     const url = this.dev.endpoint + urlPath + (query ? "?" + query : "");
-    return fetchWatched(url, { method, headers, body }, o.timeoutMs || this.timeoutMs, o.signal);
+    // after a streamed body: a second per megabyte for the server to take in and save the last of it
+    const finishMs = typeof body === "function" ? Math.ceil(Number(headers["content-length"] || 0) / (1024 * 1024)) * 1000 : 0;
+    return fetchWatched(url, { method, headers, body }, o.timeoutMs || this.timeoutMs, o.signal, finishMs);
   }
 
   async _errorOf(res, method) {

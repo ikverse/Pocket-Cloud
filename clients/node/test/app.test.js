@@ -268,7 +268,8 @@ test("onChange listens on the push topic when there is one", fakeOnly(), async (
     await waitFor(() => seen.length === 1);
     h.stop();
     assert.deepStrictEqual(seen, ["pushed.txt"]);
-    const polls = (await env.requests()).filter((r) => r.path === "/_pocket/changes" && /wait=/.test(r.query));
+    // this app's only: a long poll another test stopped can still finish (and be logged) during this one
+    const polls = (await env.requests()).filter((r) => r.app === "node-push" && r.path === "/_pocket/changes" && /wait=/.test(r.query));
     assert.strictEqual(polls.length, 0, "no long polls while push works");
   } finally {
     push.closeAllConnections();
@@ -649,6 +650,22 @@ test("an upload slower than timeoutMs succeeds while it makes progress", fakeOnl
     assert.strictEqual(e2.etag, e.etag);
   } finally {
     await env.control("slow", { ms: 0 });
+  }
+});
+
+test("after a streamed upload, the server gets extra time to save it; a small request does not", fakeOnly(), async () => {
+  const a = await env.open("node-save", { timeoutMs: 500 });
+  const src = path.join(env.tmp(), "big.bin");
+  const data = crypto.randomBytes(3 * 1024 * 1024); // streamed: 500 ms idle + 3 s to save
+  fs.writeFileSync(src, data);
+  await env.control("save", { ms: 1500 });
+  try {
+    const e = await a.putFile("big.bin", src);
+    assert.strictEqual(e.size, data.length);
+    // a body small enough to go in one piece is not streamed: the plain 500 ms applies
+    await assert.rejects(a.put("small.txt", "tiny"), (err) => err instanceof pocket.Unreachable);
+  } finally {
+    await env.control("save", { ms: 0 });
   }
 });
 

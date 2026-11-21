@@ -81,6 +81,7 @@ class Fake {
     this.fails = [];
     this.breaks = [];
     this.slowMs = 0;
+    this.saveMs = 0; // /_fake/save: how long a PUT takes to "save" after its whole body is in, before answering
     this.moved = 0;
     this.requests = [];
     this.enrolls = 0;
@@ -138,7 +139,9 @@ class Fake {
     const qi = url.indexOf("?");
     const rawPath = qi < 0 ? url : url.slice(0, qi);
     const rawQuery = qi < 0 ? "" : url.slice(qi + 1);
-    const log = { method: req.method, path: rawPath, query: rawQuery, status: 200, code: null };
+    const signer = this.keys.get(req.headers["x-pocket-key"] || "");
+    // app: which app's key signed it (null when unsigned), so a test can leave out other tests' late requests
+    const log = { method: req.method, path: rawPath, query: rawQuery, status: 200, code: null, app: signer ? signer.app : null };
     const send = (status, body, headers = {}) => {
       log.status = status;
       if (body && body.error && status >= 400) log.code = body.error;
@@ -399,6 +402,7 @@ class Fake {
       throw new Refuse(403, "QuotaExceeded", `${ctx.app} would go over its ${(ctx.cfg.allocation / GiB).toFixed(2)} GB allocation.`);
     }
     const data = await this.readBody(req, MAX_PUT);
+    if (this.saveMs) await new Promise((r) => setTimeout(r, this.saveMs)); // like the phone saving a big file
     if (sha256hex(data) !== bodySha) throw new Refuse(400, "BadDigest", "The body does not match x-pocket-content-sha256.");
     const mod = req.headers["x-pocket-modified"];
     const modified = mod && Number.isFinite(Number(mod)) ? Number(mod) : this.now();
@@ -649,6 +653,7 @@ class Fake {
     // not in the contract's table: this library's own tests of timeouts and broken answers
     if (r === "POST /_fake/break") return this.breaks.push({ times: 1, mode: "cut", ...b }), { body: { ok: true } };
     if (r === "POST /_fake/slow") return (this.slowMs = b.ms || 0), { body: { ok: true } };
+    if (r === "POST /_fake/save") return (this.saveMs = b.ms || 0), { body: { ok: true } };
     if (r === "POST /_fake/moved") return (this.moved = b.times ?? 1), { body: { ok: true } };
     if (r === "POST /_fake/expire-changes") {
       const before = Number(b.before);
